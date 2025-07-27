@@ -1,87 +1,107 @@
 "use client";
 
-import { useState } from "react";
 import { signIn } from "~/lib/auth-client";
+import { useForm, validators } from "~/hooks/use-form";
+import { FormInput } from "~/components/shared/form-input";
+
+interface LoginFormValues {
+  email: string;
+  password: string;
+}
 
 export function LoginForm() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
-    
-    try {
-      const result = await signIn.email({
-        email,
-        password,
-      });
+  const {
+    values,
+    errors,
+    touched,
+    isSubmitting,
+    handleChange,
+    handleBlur,
+    handleSubmit,
+    setError,
+    clearErrors
+  } = useForm<LoginFormValues>({
+    initialValues: {
+      email: "",
+      password: ""
+    },
+    validationSchema: {
+      email: validators.compose(
+        validators.required("Email is required"),
+        validators.email()
+      ),
+      password: validators.required("Password is required")
+    },
+    onSubmit: async (formValues) => {
+      clearErrors();
       
-      console.log("Login result:", result);
-      
-      if (result.error) {
-        setError(result.error.message || "Login failed");
-      } else {
-        window.location.href = "/";
+      try {
+        console.log("Attempting login with:", { 
+          email: formValues.email, 
+          baseURL: typeof window !== "undefined" ? window.location.origin : "unknown",
+          authURL: process.env.NEXT_PUBLIC_BETTER_AUTH_URL 
+        });
+        
+        const result = await signIn.email({
+          email: formValues.email,
+          password: formValues.password,
+        });
+        
+        console.log("Login result:", result);
+        
+        if (result?.error) {
+          console.error("Login error details:", result.error);
+          setError("email", result.error.message || "Login failed");
+        } else if (result?.data) {
+          console.log("Login successful:", result.data);
+          window.location.href = "/";
+        } else {
+          console.warn("Unexpected result format:", result);
+          setError("email", "Login failed - unexpected response");
+        }
+      } catch (err) {
+        console.error("Login error (catch block):", err);
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        setError("email", `An unexpected error occurred: ${errorMessage}`);
       }
-    } catch (err) {
-      console.error("Login error:", err);
-      setError("An unexpected error occurred");
-    } finally {
-      setLoading(false);
     }
-  };
+  });
 
   return (
     <div className="w-full max-w-md mx-auto">
       <form onSubmit={handleSubmit} className="space-y-4">
-        <h2 className="text-2xl font-bold text-center mb-6">Sign In</h2>
+        <h2 className="text-2xl font-bold text-center mb-6 text-white light:text-gray-900">Sign In</h2>
         
-        {error && (
-          <div className="p-3 text-sm text-red-700 bg-red-100 rounded-md">
-            {error}
-          </div>
-        )}
+        <FormInput
+          label="Email"
+          type="email"
+          value={values.email}
+          onChange={handleChange('email')}
+          onBlur={handleBlur('email')}
+          error={errors.email}
+          touched={touched.email}
+          placeholder="Enter your email"
+          required
+        />
         
-        <div>
-          <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-            Email
-          </label>
-          <input
-            id="email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            placeholder="Enter your email"
-          />
-        </div>
-        
-        <div>
-          <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-            Password
-          </label>
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            placeholder="Enter your password"
-          />
-        </div>
+        <FormInput
+          label="Password"
+          type="password"
+          value={values.password}
+          onChange={handleChange('password')}
+          onBlur={handleBlur('password')}
+          error={errors.password}
+          touched={touched.password}
+          placeholder="Enter your password"
+          required
+        />
         
         <button
           type="submit"
-          disabled={loading}
-          className="w-full py-2 px-4 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={isSubmitting}
+          className="w-full py-2 px-4 bg-purple-600 light:bg-blue-600 text-white font-medium rounded-md hover:bg-purple-700 light:hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-purple-500 light:focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-transparent light:focus:ring-offset-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
-          {loading ? "Signing in..." : "Sign In"}
+          {isSubmitting ? "Signing in..." : "Sign In"}
         </button>
       </form>
     </div>

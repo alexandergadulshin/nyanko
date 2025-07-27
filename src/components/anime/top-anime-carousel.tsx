@@ -1,40 +1,42 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { jikanAPI, type AnimeItem } from "~/lib/jikan-api";
-import { BaseAnimeCarousel } from "./base-anime-carousel";
+import React from "react";
+import { useCarousel } from "~/hooks/use-carousel";
+import { UnifiedCarousel } from "~/components/shared/unified-carousel";
 
-export function TopAnimeCarousel() {
-  const [animeData, setAnimeData] = useState<AnimeItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const fetchTopAnime = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const topAnime = await jikanAPI.getTopAnime(20);
-        setAnimeData(topAnime);
-      } catch (err) {
-        setError('Failed to fetch top anime data. Please try again later.');
-        console.error('Error fetching top anime:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchTopAnime();
-  }, []);
+export const TopAnimeCarousel = React.memo(() => {
+  const { data, loading, error } = useCarousel({
+    fetchType: 'topAnime',
+    limit: 16
+  });
 
   return (
-    <BaseAnimeCarousel
-      animeData={animeData}
-      loading={loading}
-      error={error}
-      title="Top Rated Anime"
-      autoplay={true}
-      autoplayDelay={6000}
-    />
+    <div className="w-full relative">
+      <div className="flex items-center justify-between mb-6 px-4">
+        <h2 className="text-2xl font-bold">
+          <span style={{ color: '#fff', WebkitTextStroke: '0.35px #000000' }} className="light:[color:#fff] light:[-webkit-text-stroke:0.35px_#000000]">Top</span>
+          <span className="text-white light:text-gray-800"> </span>
+          <span style={{ color: '#fff', WebkitTextStroke: '0.35px #000000' }} className="light:[color:#fff] light:[-webkit-text-stroke:0.35px_#000000]">Rated</span>
+          <span className="text-white light:text-gray-800">:</span>
+          <span className="text-[#fbbf24] light:text-orange-600"> Anime</span>
+        </h2>
+      </div>
+
+      <div className="relative px-4">
+        <UnifiedCarousel
+          data={data}
+          loading={loading}
+          error={error}
+          cardType="compact"
+          navigationClass="top-anime-button"
+          swiperOptions={{
+            speed: 800,
+            centeredSlides: false
+          }}
+        />
+      </div>
+    </div>
   );
-}
+});
+
+TopAnimeCarousel.displayName = 'TopAnimeCarousel';

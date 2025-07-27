@@ -3,9 +3,11 @@ import "~/styles/globals.css";
 import { type Metadata } from "next";
 import { Geist } from "next/font/google";
 import { Navbar } from "~/components/layout/navbar";
+import { Footer } from "~/components/layout/footer";
+import { ThemeProvider } from "~/hooks/use-theme";
 
 export const metadata: Metadata = {
-  title: "AnimeWeb",
+  title: "Nyanko",
   description: "Discover amazing anime series and connect with fellow fans",
   icons: [{ rel: "icon", url: "/favicon.ico" }],
 };
@@ -21,8 +23,11 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${geist.variable}`}>
       <body>
-        <Navbar />
-        {children}
+        <ThemeProvider>
+          <Navbar />
+          {children}
+          <Footer />
+        </ThemeProvider>
       </body>
     </html>
   );

@@ -4,3 +4,368 @@
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif,
     "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 }
+
+/* Base styles */
+html {
+  @apply bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900;
+  min-height: 100vh;
+}
+
+/* Light mode styles - using !important to override */
+html.light,
+html.light body {
+  background: linear-gradient(to bottom right, #e2e8f0, #cbd5e1, #e2e8f0) !important;
+  min-height: 100vh;
+}
+
+/* More specific override for light mode */
+html.light * {
+  --tw-gradient-from: #e2e8f0 !important;
+  --tw-gradient-to: #e2e8f0 !important;
+  --tw-gradient-stops: var(--tw-gradient-from), #cbd5e1, var(--tw-gradient-to) !important;
+}
+
+body {
+  @apply text-white min-h-screen;
+  background: transparent;
+}
+
+html.light body {
+  @apply text-gray-900;
+  background: transparent !important;
+}
+
+/* Global light mode overrides */
+html.light {
+  /* Scrollbar styling for light mode */
+  scrollbar-color: rgba(0, 0, 0, 0.3) rgba(0, 0, 0, 0.1);
+}
+
+html.light ::-webkit-scrollbar {
+  width: 8px;
+}
+
+html.light ::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+html.light ::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+
+html.light ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+/* Form elements light mode */
+html.light input,
+html.light textarea,
+html.light select {
+  @apply bg-white border-gray-300 text-gray-900;
+}
+
+html.light input:focus,
+html.light textarea:focus,
+html.light select:focus {
+  @apply border-blue-500 ring-blue-500;
+}
+
+/* Button overrides for light mode */
+html.light button:not(.custom-styled) {
+  @apply text-gray-700;
+}
+
+/* Link styling for light mode */
+html.light a:not(.custom-styled) {
+  @apply text-blue-600 hover:text-blue-700;
+}
+
+/* Text color overrides for light mode readability */
+html.light .text-white {
+  @apply text-gray-900;
+}
+
+/* Navbar specific overrides to prevent blue text in light mode */
+html.light nav .text-white\/90 {
+  @apply text-gray-300;
+}
+
+html.light nav .text-white\/80 {
+  @apply text-gray-400;
+}
+
+html.light .text-gray-100 {
+  @apply text-gray-900;
+}
+
+html.light .text-gray-200 {
+  @apply text-gray-800;
+}
+
+html.light .text-gray-300 {
+  @apply text-gray-700;
+}
+
+html.light .text-gray-400 {
+  @apply text-gray-600;
+}
+
+html.light .text-gray-500 {
+  @apply text-gray-500;
+}
+
+html.light .text-purple-200 {
+  @apply text-purple-900;
+}
+
+html.light .text-purple-300 {
+  @apply text-purple-800;
+}
+
+html.light .text-red-400 {
+  @apply text-red-800;
+}
+
+html.light .text-yellow-400 {
+  @apply text-yellow-800;
+}
+
+html.light .text-green-400 {
+  @apply text-green-800;
+}
+
+html.light .text-blue-400 {
+  @apply text-blue-800;
+}
+
+/* Hover states for light mode */
+html.light .hover\:text-purple-300:hover {
+  @apply text-purple-700;
+}
+
+/* Background overrides for light mode */
+html.light .bg-gray-800\/60 {
+  @apply bg-white/90 border-gray-300;
+}
+
+html.light .bg-gray-900\/30 {
+  @apply bg-white/80;
+}
+
+html.light .bg-gray-900\/40 {
+  @apply bg-white/85;
+}
+
+html.light .bg-gray-900\/50 {
+  @apply bg-white/90;
+}
+
+html.light .bg-gray-700\/20 {
+  @apply bg-gray-200/80;
+}
+
+html.light .border-gray-600 {
+  @apply border-gray-400;
+}
+
+html.light .border-gray-700 {
+  @apply border-gray-300;
+}
+
+html.light .border-gray-800 {
+  @apply border-gray-300;
+}
+
+html.light .border-gray-700\/30 {
+  @apply border-gray-300/70;
+}
+
+html.light .border-gray-700\/40 {
+  @apply border-gray-300/80;
+}
+
+html.light .border-gray-600\/40 {
+  @apply border-gray-400/60;
+}
+
+html.light .border-gray-600\/50 {
+  @apply border-gray-400/70;
+}
+
+/* Aggressive background override for light mode */
+html.light main,
+html.light div[class*="min-h-screen"],
+html.light [class*="bg-[#181622]"] {
+  background: transparent !important;
+}
+
+/* Override any Tailwind background utilities in light mode */
+html.light .bg-gradient-to-br {
+  background: transparent !important;
+}
+
+/* Specific override for the dark background color */
+html.light [style*="background"] {
+  background: linear-gradient(to bottom right, #e2e8f0, #cbd5e1, #e2e8f0) !important;
+}
+
+/* Target the specific dark color used in the app */
+html.light [class*="181622"] {
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+/* Keep dark styling for top anime and manga carousels */
+html.light .top-anime-swiper .text-white,
+html.light .top-anime-swiper .text-yellow-400,
+html.light .top-anime-swiper .text-xs {
+  color: white !important;
+}
+
+html.light .top-manga-swiper .text-white,
+html.light .top-manga-swiper .text-yellow-400,
+html.light .top-manga-swiper .text-xs {
+  color: white !important;
+}
+
+/* Keep dark backgrounds for rating badges in carousels */
+html.light .top-anime-swiper .bg-black\/70,
+html.light .top-manga-swiper .bg-black\/70 {
+  background-color: rgba(0, 0, 0, 0.7) !important;
+}
+
+/* Keep dark gradients for overlay text in carousels */
+html.light .top-anime-swiper .bg-gradient-to-t,
+html.light .top-manga-swiper .bg-gradient-to-t {
+  background-image: linear-gradient(to top, rgba(0, 0, 0, 0.9), transparent) !important;
+}
+
+/* Keep dark navigation buttons for top carousels - override light mode styles */
+html.light .top-anime-button-prev,
+html.light .top-anime-button-next,
+html.light .top-manga-button-prev,
+html.light .top-manga-button-next {
+  background: rgba(0, 0, 0, 0.5) !important;
+  color: white !important;
+}
+
+html.light .top-anime-button-prev:hover,
+html.light .top-anime-button-next:hover,
+html.light .top-manga-button-prev:hover,
+html.light .top-manga-button-next:hover {
+  background: rgba(0, 0, 0, 0.7) !important;
+  color: white !important;
+}
+
+/* Profile page specific improvements for light mode */
+html.light .backdrop-blur-sm {
+  backdrop-filter: blur(8px);
+}
+
+/* Header improvements */
+html.light header {
+  background: rgba(255, 255, 255, 0.85) !important;
+  border-color: rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Status colors for light mode - more vibrant */
+html.light .bg-blue-500\/10 {
+  @apply bg-blue-100 border-blue-300;
+}
+
+html.light .text-blue-300 {
+  @apply text-blue-800;
+}
+
+html.light .text-blue-200 {
+  @apply text-blue-700;
+}
+
+html.light .bg-green-500\/10 {
+  @apply bg-green-100 border-green-300;
+}
+
+html.light .text-green-300 {
+  @apply text-green-800;
+}
+
+html.light .text-green-200 {
+  @apply text-green-700;
+}
+
+html.light .bg-yellow-500\/10 {
+  @apply bg-yellow-100 border-yellow-300;
+}
+
+html.light .text-yellow-300 {
+  @apply text-yellow-800;
+}
+
+html.light .text-yellow-200 {
+  @apply text-yellow-700;
+}
+
+html.light .bg-red-500\/10 {
+  @apply bg-red-100 border-red-300;
+}
+
+html.light .text-red-300 {
+  @apply text-red-800;
+}
+
+html.light .text-red-200 {
+  @apply text-red-700;
+}
+
+html.light .bg-gray-500\/10 {
+  @apply bg-gray-200 border-gray-400;
+}
+
+/* Advanced search page specific improvements for light mode */
+html.light .bg-gradient-to-br {
+  background: rgba(255, 255, 255, 0.90) !important;
+  border-color: rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Advanced search form elements */
+html.light select,
+html.light option {
+  @apply bg-white border-gray-300 text-gray-900;
+}
+
+/* Search bar improvements for light mode */
+html.light input[type="text"],
+html.light input[type="search"] {
+  @apply bg-white/95 border-gray-500 text-gray-900;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+html.light input[type="text"]:focus,
+html.light input[type="search"]:focus {
+  @apply bg-white border-gray-600 text-gray-900;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
+html.light input::placeholder {
+  @apply text-gray-700;
+  font-weight: 500;
+}
+
+/* Search dropdown category selector */
+html.light button[class*="bg-[#"] {
+  @apply bg-white/95 border-gray-500 text-gray-900;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* Carousel title borders in light mode */
+html.light h2 span[style*="WebkitTextStroke"] {
+  color: #fff !important;
+  -webkit-text-stroke: 0.35px #000000 !important;
+}
+
+/* Advanced search filter cards */
+html.light .bg-gradient-to-br.backdrop-blur-sm {
+  background: rgba(255, 255, 255, 0.95) !important;
+  backdrop-filter: blur(8px);
+}

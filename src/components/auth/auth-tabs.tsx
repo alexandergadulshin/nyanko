@@ -21,7 +21,7 @@ export function AuthTabs() {
 
   return (
     <div className="w-full max-w-md mx-auto">
-      <div className="flex mb-6 bg-gray-100 rounded-lg p-1">
+      <div className="flex mb-6 bg-white/20 light:bg-gray-100 rounded-lg p-1 backdrop-blur-sm">
         <button
           onClick={() => {
             setActiveTab("login");
@@ -29,8 +29,8 @@ export function AuthTabs() {
           }}
           className={`flex-1 py-2 px-4 text-sm font-medium rounded-md transition-colors ${
             activeTab === "login"
-              ? "bg-white text-blue-600 shadow-sm"
-              : "text-gray-600 hover:text-gray-800"
+              ? "bg-white/90 light:bg-white text-purple-600 light:text-blue-600 shadow-sm backdrop-blur-sm"
+              : "text-gray-300 light:text-gray-600 hover:text-white light:hover:text-gray-800"
           }`}
         >
           Sign In
@@ -42,8 +42,8 @@ export function AuthTabs() {
           }}
           className={`flex-1 py-2 px-4 text-sm font-medium rounded-md transition-colors ${
             activeTab === "signup"
-              ? "bg-white text-blue-600 shadow-sm"
-              : "text-gray-600 hover:text-gray-800"
+              ? "bg-white/90 light:bg-white text-purple-600 light:text-blue-600 shadow-sm backdrop-blur-sm"
+              : "text-gray-300 light:text-gray-600 hover:text-white light:hover:text-gray-800"
           }`}
         >
           Create Account
