@@ -1,8 +1,3 @@
-// Temporarily disable env validation during build if needed
-if (process.env.SKIP_ENV_VALIDATION !== 'true') {
-  await import("./src/env.js");
-}
-
 /** @type {import("next").NextConfig} */
 const config = {
   eslint: {
