@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useUser, SignOutButton } from "@clerk/nextjs";
+import { useSession, signOut } from "~/lib/auth-client";
 import { APP_CONFIG } from "~/lib/constants";
 import { NAV_ITEMS, USER_MENU_ITEMS, GUEST_MENU_ITEMS } from "~/lib/navigation";
 import { useTheme } from "~/hooks/use-theme";
@@ -10,8 +11,15 @@ import { useTheme } from "~/hooks/use-theme";
 export function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { user, isLoaded } = useUser();
+  const { data: session, isPending } = useSession();
   const [scrolled, setScrolled] = useState(false);
   const { theme, toggleTheme } = useTheme();
+
+  // Determine which authentication system is active
+  const isAuthenticated = user || session;
+  const userName = user ? 
+    (user.fullName || user.emailAddresses[0]?.emailAddress) : 
+    session?.user?.name;
 
   useEffect(() => {
     const handleScroll = () => {
@@ -115,14 +123,17 @@ export function Navbar() {
                   <hr className="my-1 border-gray-200" />
                 </div>
 
-                {!isLoaded ? (
+                {(!isLoaded || isPending) ? (
                   <div className="px-4 py-2 text-sm text-gray-500">
                     Loading...
                   </div>
-                ) : user ? (
+                ) : isAuthenticated ? (
                   <>
                     <div className="px-4 py-2 text-sm text-gray-900 font-medium border-b border-gray-100">
-                      {user.fullName || user.emailAddresses[0]?.emailAddress}
+                      {userName}
+                      <div className="text-xs text-gray-500 mt-1">
+                        {user ? "Clerk Account" : "Email Account"}
+                      </div>
                     </div>
                     {USER_MENU_ITEMS.map((item) => (
                       <Link
@@ -134,14 +145,31 @@ export function Navbar() {
                         {item.label}
                       </Link>
                     ))}
-                    <SignOutButton>
+                    {user ? (
+                      <SignOutButton>
+                        <button
+                          onClick={closeMenu}
+                          className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
+                        >
+                          Sign Out (Clerk)
+                        </button>
+                      </SignOutButton>
+                    ) : (
                       <button
-                        onClick={closeMenu}
+                        onClick={async () => {
+                          closeMenu();
+                          try {
+                            await signOut();
+                            window.location.href = "/";
+                          } catch (error) {
+                            console.error("Sign out error:", error);
+                          }
+                        }}
                         className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
                       >
-                        Sign Out
+                        Sign Out (Email)
                       </button>
-                    </SignOutButton>
+                    )}
                   </>
                 ) : (
                   <>
