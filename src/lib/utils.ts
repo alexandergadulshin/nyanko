@@ -110,8 +110,8 @@ export function sleep(ms: number): Promise<void> {
 
 export function retry<T>(
   fn: () => Promise<T>,
-  maxAttempts: number = 3,
-  delay: number = 1000
+  maxAttempts = 3,
+  delay = 1000
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     let attempts = 0;
@@ -126,11 +126,13 @@ export function retry<T>(
         if (attempts >= maxAttempts) {
           reject(error);
         } else {
-          setTimeout(attempt, delay * attempts);
+          setTimeout(() => {
+            void attempt();
+          }, delay * attempts);
         }
       }
     };
     
-    attempt();
+    void attempt();
   });
 }

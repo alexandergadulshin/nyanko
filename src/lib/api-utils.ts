@@ -11,7 +11,7 @@ export class ApiException extends Error {
   public readonly statusCode: number;
   public readonly code?: string;
 
-  constructor(message: string, statusCode: number = 500, code?: string) {
+  constructor(message: string, statusCode = 500, code?: string) {
     super(message);
     this.name = 'ApiException';
     this.statusCode = statusCode;
@@ -32,7 +32,7 @@ export const ApiErrors = {
 } as const;
 
 // Helper to create custom error responses
-export function createApiError(message: string, statusCode: number = 500, code?: string): ApiException {
+export function createApiError(message: string, statusCode = 500, code?: string): ApiException {
   return new ApiException(message, statusCode, code);
 }
 
@@ -102,7 +102,7 @@ export function getOptionalParam(url: URL, paramName: string, defaultValue?: str
   return url.searchParams.get(paramName) || defaultValue;
 }
 
-export function getNumericParam(url: URL, paramName: string, required: boolean = true): number {
+export function getNumericParam(url: URL, paramName: string, required = true): number {
   const value = url.searchParams.get(paramName);
   
   if (!value) {

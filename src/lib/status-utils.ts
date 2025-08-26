@@ -210,19 +210,19 @@ export const statusEmojis = {
 
 // Helper functions to get status information
 export function getAnimeStatusColor(status: AnimeStatus, variant: keyof typeof statusColors.anime[AnimeStatus] = 'bg') {
-  return statusColors.anime[status]?.[variant] || statusColors.anime["Finished"][variant];
+  return statusColors.anime[status]?.[variant] || statusColors.anime.Finished[variant];
 }
 
 export function getUserAnimeStatusColor(status: UserAnimeStatus, variant: keyof typeof statusColors.userAnime[UserAnimeStatus] = 'bg') {
-  return statusColors.userAnime[status]?.[variant] || statusColors.userAnime["planning"][variant];
+  return statusColors.userAnime[status]?.[variant] || statusColors.userAnime.planning[variant];
 }
 
 export function getMangaStatusColor(status: MangaStatus, variant: keyof typeof statusColors.manga[MangaStatus] = 'bg') {
-  return statusColors.manga[status]?.[variant] || statusColors.manga["Finished"][variant];
+  return statusColors.manga[status]?.[variant] || statusColors.manga.Finished[variant];
 }
 
 export function getApiStatusColor(status: ApiStatus, variant: keyof typeof statusColors.api[ApiStatus] = 'bg') {
-  return statusColors.api[status]?.[variant] || statusColors.api["info"][variant];
+  return statusColors.api[status]?.[variant] || statusColors.api.info[variant];
 }
 
 export function getUserAnimeStatusText(status: UserAnimeStatus): string {

@@ -2,14 +2,14 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { useSession, signOut } from "~/lib/auth-client";
+import { useUser, SignOutButton } from "@clerk/nextjs";
 import { APP_CONFIG } from "~/lib/constants";
 import { NAV_ITEMS, USER_MENU_ITEMS, GUEST_MENU_ITEMS } from "~/lib/navigation";
 import { useTheme } from "~/hooks/use-theme";
 
 export function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const { data: session, isPending } = useSession();
+  const { user, isLoaded } = useUser();
   const [scrolled, setScrolled] = useState(false);
   const { theme, toggleTheme } = useTheme();
 
@@ -115,14 +115,14 @@ export function Navbar() {
                   <hr className="my-1 border-gray-200" />
                 </div>
 
-                {isPending ? (
+                {!isLoaded ? (
                   <div className="px-4 py-2 text-sm text-gray-500">
                     Loading...
                   </div>
-                ) : session ? (
+                ) : user ? (
                   <>
                     <div className="px-4 py-2 text-sm text-gray-900 font-medium border-b border-gray-100">
-                      {session.user.name}
+                      {user.fullName || user.emailAddresses[0]?.emailAddress}
                     </div>
                     {USER_MENU_ITEMS.map((item) => (
                       <Link
@@ -134,20 +134,14 @@ export function Navbar() {
                         {item.label}
                       </Link>
                     ))}
-                    <button
-                      onClick={async () => {
-                        closeMenu();
-                        try {
-                          await signOut();
-                          window.location.href = "/";
-                        } catch (error) {
-                          console.error("Sign out error:", error);
-                        }
-                      }}
-                      className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
-                    >
-                      Sign Out
-                    </button>
+                    <SignOutButton>
+                      <button
+                        onClick={closeMenu}
+                        className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
+                      >
+                        Sign Out
+                      </button>
+                    </SignOutButton>
                   </>
                 ) : (
                   <>

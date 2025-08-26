@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { useSession } from "~/lib/auth-client";
+import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { FaArrowLeft, FaEdit, FaPlus, FaSearch, FaTimes, FaHeart, FaCamera } from "react-icons/fa";
 import ProfilePictureUpload from "~/components/profile/profile-picture-upload";
@@ -68,7 +68,7 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
     };
   }, []);
   const resolvedParams = React.use(params);
-  const { data: session, isPending } = useSession();
+  const { user, isLoaded } = useUser();
   const router = useRouter();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [animeList, setAnimeList] = useState<AnimeListItem[]>([]);
@@ -91,7 +91,7 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
   const [searchResults, setSearchResults] = useState<SearchAnime[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
 
-  const isOwnProfile = session?.user?.id === resolvedParams.userId;
+  const isOwnProfile = user?.id === resolvedParams.userId;
 
   const fetchFavorites = async () => {
     try {
@@ -294,7 +294,7 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
     }
   };
 
-  if (isPending || loading) {
+  if (!isLoaded || loading) {
     return (
       <div className="min-h-screen bg-[#181622] light:bg-transparent flex items-center justify-center">
         <div className="text-center">
@@ -305,7 +305,7 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
     );
   }
 
-  if (!session) {
+  if (!isLoaded || !user) {
     return (
       <div className="min-h-screen bg-[#181622] light:bg-transparent flex items-center justify-center">
         <div className="text-center">

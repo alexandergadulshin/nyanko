@@ -1,22 +1,22 @@
 "use client";
 
-import { useSession } from "~/lib/auth-client";
+import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
 export default function ProfileRedirectPage() {
-  const { data: session, isPending } = useSession();
+  const { user, isLoaded } = useUser();
   const router = useRouter();
 
   useEffect(() => {
-    if (!isPending) {
-      if (session?.user?.id) {
-        router.push(`/profile/${session.user.id}`);
+    if (isLoaded) {
+      if (user?.id) {
+        router.push(`/profile/${user.id}`);
       } else {
         router.push("/auth");
       }
     }
-  }, [session, isPending, router]);
+  }, [user, isLoaded, router]);
 
   return (
     <div className="min-h-screen bg-[#181622] light:bg-transparent flex items-center justify-center">
