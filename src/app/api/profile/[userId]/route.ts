@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { db } from "~/server/db";
 import { user, animeList } from "~/server/db/schema";
 import { eq } from "drizzle-orm";
+import { currentUser } from "@clerk/nextjs/server";
 
 export async function GET(
   request: NextRequest,
@@ -10,7 +11,7 @@ export async function GET(
   try {
     const { userId } = await params;
     
-    const userProfile = await db
+    let userProfile = await db
       .select({
         id: user.id,
         name: user.name,
@@ -24,11 +25,39 @@ export async function GET(
       .where(eq(user.id, userId))
       .limit(1);
 
+    // If user doesn't exist in database, create them from Clerk data
     if (userProfile.length === 0) {
-      return NextResponse.json(
-        { error: "User not found" },
-        { status: 404 }
-      );
+      const clerkUser = await currentUser();
+      
+      if (!clerkUser || clerkUser.id !== userId) {
+        return NextResponse.json(
+          { error: "User not found" },
+          { status: 404 }
+        );
+      }
+
+      // Create the user in the database
+      const newUser = await db
+        .insert(user)
+        .values({
+          id: clerkUser.id,
+          name: clerkUser.fullName || clerkUser.firstName || "User",
+          email: clerkUser.emailAddresses[0]?.emailAddress || "",
+          image: clerkUser.imageUrl || null,
+          username: clerkUser.username || null,
+          bio: null,
+        })
+        .returning({
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          image: user.image,
+          username: user.username,
+          bio: user.bio,
+          createdAt: user.createdAt
+        });
+
+      userProfile = newUser;
     }
 
     const userAnimeList = await db

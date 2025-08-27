@@ -24,11 +24,11 @@ export const USER_MENU_ITEMS: NavItem[] = [
 export const GUEST_MENU_ITEMS: NavItem[] = [
   {
     label: "Sign In",
-    href: ROUTES.AUTH,
+    href: "/sign-in",
   },
   {
     label: "Sign Up",
-    href: `${ROUTES.AUTH}?tab=signup`,
+    href: "/sign-up",
   },
 ];
 

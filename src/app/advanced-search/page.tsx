@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FaStar, FaHeart, FaFilter, FaSort, FaTimes, FaPlay, FaUsers, FaTheaterMasks, FaBook } from "react-icons/fa";
 import { jikanAPI, type GenreItem, type SearchCategory, type SearchItem } from "~/utils/api";
@@ -102,7 +102,7 @@ interface SearchFilters {
   sort: 'asc' | 'desc';
 }
 
-export default function AdvancedSearchPage() {
+function AdvancedSearchPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   
@@ -692,5 +692,20 @@ export default function AdvancedSearchPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function AdvancedSearchPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-[#181622] light:bg-transparent flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500 mx-auto mb-2"></div>
+          <p className="text-gray-400">Loading advanced search...</p>
+        </div>
+      </div>
+    }>
+      <AdvancedSearchPageContent />
+    </Suspense>
   );
 }
