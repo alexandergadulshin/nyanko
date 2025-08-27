@@ -1,4 +1,0 @@
-# Test connection to Supabase once you have the connection string
-# 1. Add your Supabase DATABASE_URL to .env
-# 2. Run: pnpm db:push
-# 3. Verify schema in Supabase dashboard
