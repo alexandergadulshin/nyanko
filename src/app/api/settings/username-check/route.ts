@@ -20,7 +20,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ available: true });
     }
 
-    // Check if username is already taken by another user
     const existingUser = await database.query.user.findFirst({
       where: and(
         eq(user.username, username.trim()),
@@ -56,7 +55,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ available: true });
     }
 
-    // Check if username is already taken by another user
     const existingUser = await database.query.user.findFirst({
       where: and(
         eq(user.username, username.trim()),

@@ -38,10 +38,8 @@ export default function MangaDetailPage() {
       
       try {
         setLoading(true);
-        // Add a small delay to respect rate limits
         await new Promise(resolve => setTimeout(resolve, 200));
         
-        // For now, we'll use the basic manga data since the API doesn't have detailed manga endpoint
         let response = await fetch(`https://api.jikan.moe/v4/manga/${mangaId}`);
         
         if (!response.ok) {

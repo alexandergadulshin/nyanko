@@ -77,7 +77,6 @@ interface FriendshipStatus {
 }
 
 export default function ProfilePage({ params }: { params: Promise<{ userId: string }> }) {
-  // Hide the main navbar for profile pages
   React.useEffect(() => {
     const navbar = document.querySelector('nav');
     if (navbar) {
@@ -107,7 +106,6 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
   });
   const [saving, setSaving] = useState(false);
   
-  // Favorites state
   const [favorites, setFavorites] = useState<FavoriteItem[]>([]);
   const [showAddFavoriteModal, setShowAddFavoriteModal] = useState(false);
   const [favoriteType, setFavoriteType] = useState<"anime" | "character" | "person">("anime");
@@ -115,7 +113,6 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
   const [searchResults, setSearchResults] = useState<SearchAnime[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   
-  // Friend management state
   const [friendshipStatus, setFriendshipStatus] = useState<FriendshipStatus | null>(null);
   const [friendActionLoading, setFriendActionLoading] = useState(false);
 
@@ -606,7 +603,6 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
               </div>
             </div>
 
-            {/* Quick Stats */}
             <div className="bg-gray-800/60 backdrop-blur-sm rounded-xl p-4 border border-gray-700/30">
               <h3 className="font-semibold text-gray-100 mb-3 text-sm">Quick Stats</h3>
               <div className="space-y-2 text-sm">

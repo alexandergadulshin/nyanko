@@ -52,7 +52,6 @@ export class ApiException extends Error {
   }
 }
 
-// Standard error responses
 export const ApiErrors = {
   UNAUTHORIZED: new ApiException("Unauthorized", 401, "UNAUTHORIZED"),
   FORBIDDEN: new ApiException("Forbidden", 403, "FORBIDDEN"),
@@ -64,12 +63,10 @@ export const ApiErrors = {
   TOO_MANY_REQUESTS: new ApiException("Too many requests", 429, "TOO_MANY_REQUESTS")
 } as const;
 
-// Helper to create custom error responses
 export function createApiError(message: string, statusCode = 500, code?: string): ApiException {
   return new ApiException(message, statusCode, code);
 }
 
-// Standard success response
 export function createSuccessResponse(data?: any, message?: string) {
   const response: any = { success: true };
   if (data !== undefined) response.data = data;
@@ -77,7 +74,6 @@ export function createSuccessResponse(data?: any, message?: string) {
   return NextResponse.json(response);
 }
 
-// Standard error response
 export function createErrorResponse(error: ApiException | Error, statusCode?: number) {
   const status = error instanceof ApiException ? error.statusCode : (statusCode || 500);
   const code = error instanceof ApiException ? error.code : undefined;
@@ -107,7 +103,6 @@ export function requireDatabase() {
   return db;
 }
 
-// Request body validation
 export async function validateRequestBody<T>(
   request: NextRequest, 
   validator: (body: unknown) => T
@@ -121,7 +116,6 @@ export async function validateRequestBody<T>(
   }
 }
 
-// Query parameter helpers
 export function getRequiredParam(url: URL, paramName: string): string {
   const value = url.searchParams.get(paramName);
   if (!value) {
@@ -152,7 +146,6 @@ export function getNumericParam(url: URL, paramName: string, required = true): n
   return parsed;
 }
 
-// Error handling wrapper for API routes
 export function withErrorHandling<T extends any[]>(
   handler: (...args: T) => Promise<NextResponse>
 ) {
@@ -166,7 +159,6 @@ export function withErrorHandling<T extends any[]>(
         return createErrorResponse(error);
       }
       
-      // Log unexpected errors but don't expose internal details
       return createErrorResponse(
         new ApiException("An unexpected error occurred", 500, "UNEXPECTED_ERROR")
       );
@@ -174,12 +166,10 @@ export function withErrorHandling<T extends any[]>(
   };
 }
 
-// Database operation helpers
 export function handleDatabaseError(error: unknown, operation: string): never {
   console.error(`Database ${operation} error:`, error);
   
   if (error instanceof Error) {
-    // Check for common database constraint errors
     if (error.message.includes('unique constraint') || error.message.includes('UNIQUE constraint')) {
       throw createApiError("Resource already exists", 409, "DUPLICATE_RESOURCE");
     }
@@ -192,7 +182,6 @@ export function handleDatabaseError(error: unknown, operation: string): never {
   throw ApiErrors.INTERNAL_ERROR;
 }
 
-// Pagination helpers
 export interface PaginationParams {
   page: number;
   limit: number;
@@ -239,7 +228,6 @@ export function createPaginatedResponse<T>(
   };
 }
 
-// Validation schemas (basic implementations)
 export const validators = {
   email: (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -267,7 +255,6 @@ export const validators = {
   }
 };
 
-// Type-safe validator factory
 export function createValidator<T>(schema: Record<keyof T, (value: any) => boolean>) {
   return (body: unknown): T => {
     if (!body || typeof body !== 'object') {

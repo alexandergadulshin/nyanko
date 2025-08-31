@@ -5,13 +5,12 @@ import { eq, and } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { requireDatabase } from "~/lib/api-utils";
 
-// GET /api/id-mapping - Get internal item by external ID
 export async function GET(request: NextRequest) {
   try {
     const database = requireDatabase();
 
     const { searchParams } = new URL(request.url);
-    const externalService = searchParams.get("service"); // e.g., "myanimelist"
+    const externalService = searchParams.get("service");
     const externalId = searchParams.get("external_id");
     const internalId = searchParams.get("internal_id");
 
@@ -20,7 +19,6 @@ export async function GET(request: NextRequest) {
     }
 
     if (externalId) {
-      // Look up internal item by external ID
       const mapping = await database
         .select({
           internalId: externalIdMappings.internalId,
@@ -52,7 +50,6 @@ export async function GET(request: NextRequest) {
 
       return NextResponse.json({ mapping: mapping[0] });
     } else if (internalId) {
-      // Look up external mappings by internal ID
       const mappings = await database
         .select({
           internalId: externalIdMappings.internalId,
@@ -82,12 +79,10 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST /api/id-mapping - Create new item with external ID mapping
 export async function POST(request: NextRequest) {
   try {
     const database = requireDatabase();
 
-    // Only allow authenticated users to create mappings (could be admin-only in production)
     const { userId } = await auth();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -122,7 +117,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if mapping already exists
     const existingMapping = await database
       .select()
       .from(externalIdMappings)
@@ -141,7 +135,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create internal item
     const internalId = uuidv4();
     const newItem = await database
       .insert(items)
@@ -155,7 +148,6 @@ export async function POST(request: NextRequest) {
       })
       .returning();
 
-    // Create external ID mapping
     const mappingId = uuidv4();
     const newMapping = await database
       .insert(externalIdMappings)
@@ -183,7 +175,6 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// PUT /api/id-mapping - Update existing mapping
 export async function PUT(request: NextRequest) {
   try {
     const database = requireDatabase();
@@ -214,7 +205,6 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Find existing mapping
     const existingMapping = await database
       .select()
       .from(externalIdMappings)
@@ -232,7 +222,6 @@ export async function PUT(request: NextRequest) {
 
     const mapping = existingMapping[0]!;
 
-    // Update mapping
     const updatedMapping = await database
       .update(externalIdMappings)
       .set({
@@ -243,7 +232,6 @@ export async function PUT(request: NextRequest) {
       .where(eq(externalIdMappings.id, mapping.id))
       .returning();
 
-    // Update item if provided
     let updatedItem = null;
     if (itemUpdate) {
       updatedItem = await database

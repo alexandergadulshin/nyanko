@@ -14,7 +14,6 @@ export default function OnboardingPage() {
   const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
   const [checkingUsername, setCheckingUsername] = useState(false);
 
-  // Check if user needs onboarding
   useEffect(() => {
     if (isLoaded && !user) {
       router.push("/auth");
@@ -22,22 +21,18 @@ export default function OnboardingPage() {
     }
 
     if (isLoaded && user) {
-      // Check if user already has a complete profile
       fetch(`/api/profile/${user.id}`)
         .then(response => response.json())
         .then(data => {
           if (data.profile?.username && data.profile?.name) {
-            // User already has complete profile, redirect to profile
             router.push("/profile");
           }
         })
         .catch(() => {
-          // Profile doesn't exist, stay on onboarding
         });
     }
   }, [isLoaded, user, router]);
 
-  // Check username availability
   useEffect(() => {
     const checkUsername = async () => {
       if (username.length < 3) {
@@ -105,7 +100,6 @@ export default function OnboardingPage() {
         throw new Error(errorData.error || "Failed to create profile");
       }
 
-      // Redirect to profile after successful setup
       router.push("/profile");
     } catch (error) {
       console.error("Error creating profile:", error);
@@ -139,7 +133,6 @@ export default function OnboardingPage() {
 
         <div className="bg-white/10 light:bg-white backdrop-blur-md border border-white/20 light:border-gray-200 p-8 shadow-xl light:shadow-lg rounded-xl">
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Display Name */}
             <div>
               <label htmlFor="displayName" className="block text-sm font-medium text-purple-100 light:text-gray-700 mb-2">
                 Display Name
@@ -155,7 +148,6 @@ export default function OnboardingPage() {
               />
             </div>
 
-            {/* Username */}
             <div>
               <label htmlFor="username" className="block text-sm font-medium text-purple-100 light:text-gray-700 mb-2">
                 Username
@@ -170,7 +162,6 @@ export default function OnboardingPage() {
                 required
               />
               
-              {/* Username validation feedback */}
               {username.length > 0 && (
                 <div className="mt-2 text-sm">
                   {username.length < 3 ? (
@@ -194,14 +185,12 @@ export default function OnboardingPage() {
               )}
             </div>
 
-            {/* Error message */}
             {error && (
               <div className="text-red-400 light:text-red-600 text-sm bg-red-500/10 light:bg-red-50 border border-red-500/20 light:border-red-200 rounded-lg p-3">
                 {error}
               </div>
             )}
 
-            {/* Submit button */}
             <button
               type="submit"
               disabled={isLoading || usernameAvailable === false || checkingUsername}

@@ -26,9 +26,6 @@ export interface ItemWithMappings extends InternalItem {
 }
 
 export class IdMappingService {
-  /**
-   * Get internal item by external ID
-   */
   static async getByExternalId(
     externalService: string,
     externalId: string
@@ -73,9 +70,6 @@ export class IdMappingService {
     };
   }
 
-  /**
-   * Get all external mappings for an internal item
-   */
   static async getMappingsForItem(internalId: string): Promise<ExternalMapping[]> {
     if (!db) throw new Error("Database not available");
 
@@ -94,9 +88,6 @@ export class IdMappingService {
     return mappings;
   }
 
-  /**
-   * Create or get existing item with external mapping
-   */
   static async createOrGetItem(
     itemData: {
       type: string;
@@ -113,14 +104,12 @@ export class IdMappingService {
   ): Promise<ItemWithMappings> {
     if (!db) throw new Error("Database not available");
 
-    // Check if mapping already exists
     const existing = await this.getByExternalId(
       externalMapping.service,
       externalMapping.id
     );
 
     if (existing) {
-      // Update external data if provided
       if (externalMapping.data) {
         await db
           .update(externalIdMappings)
@@ -139,7 +128,6 @@ export class IdMappingService {
       return existing;
     }
 
-    // Create new item and mapping
     const internalId = uuidv4();
 
     const newItem = await db
@@ -173,9 +161,6 @@ export class IdMappingService {
     };
   }
 
-  /**
-   * Add external mapping to existing internal item
-   */
   static async addMapping(
     internalId: string,
     externalMapping: {
@@ -186,7 +171,6 @@ export class IdMappingService {
   ): Promise<ExternalMapping> {
     if (!db) throw new Error("Database not available");
 
-    // Check if mapping already exists
     const existing = await db
       .select()
       .from(externalIdMappings)
@@ -200,7 +184,6 @@ export class IdMappingService {
       .limit(1);
 
     if (existing.length > 0) {
-      // Update existing mapping
       const updated = await db
         .update(externalIdMappings)
         .set({
@@ -214,7 +197,6 @@ export class IdMappingService {
       return updated[0];
     }
 
-    // Create new mapping
     const mappingId = uuidv4();
     const newMapping = await db
       .insert(externalIdMappings)
@@ -231,9 +213,6 @@ export class IdMappingService {
     return newMapping[0];
   }
 
-  /**
-   * Update item data
-   */
   static async updateItem(
     internalId: string,
     updates: {
@@ -258,9 +237,6 @@ export class IdMappingService {
     return updated[0];
   }
 
-  /**
-   * Helper: Convert MyAnimeList data to internal format
-   */
   static malToInternal(malData: {
     mal_id: number;
     title?: string;

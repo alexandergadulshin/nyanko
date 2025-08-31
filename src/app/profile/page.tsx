@@ -10,10 +10,8 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (isLoaded && user) {
-      // Redirect to the dynamic profile page with the user's ID
       router.replace(`/profile/${user.id}`);
     } else if (isLoaded && !user) {
-      // Redirect to sign in if not authenticated
       router.replace("/sign-in");
     }
   }, [isLoaded, user, router]);
@@ -29,5 +27,5 @@ export default function ProfilePage() {
     );
   }
 
-  return null; // This will be replaced by the redirect
+  return null;
 }

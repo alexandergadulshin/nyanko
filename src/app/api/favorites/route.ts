@@ -64,7 +64,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    // Check if user already has this item as favorite
     const existing = await database
       .select()
       .from(favorites)
@@ -79,7 +78,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Already in favorites" }, { status: 409 });
     }
 
-    // Check if user already has 5 favorites of this type
     const favoriteCount = await database
       .select({ count: count() })
       .from(favorites)

@@ -19,7 +19,6 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Account deletion not confirmed" }, { status: 400 });
     }
 
-    // Delete user data in correct order (foreign key constraints)
     await database.delete(favorites).where(eq(favorites.userId, userId));
     await database.delete(animeList).where(eq(animeList.userId, userId));
     await database.delete(user).where(eq(user.id, userId));

@@ -12,10 +12,8 @@ function AuthContent() {
   const mode = searchParams.get("mode") || "sign-in";
   const [isSignUp, setIsSignUp] = useState(mode === "sign-up");
 
-  // Redirect authenticated users to profile or onboarding
   useEffect(() => {
     if (isLoaded && user) {
-      // Check if user has completed onboarding by trying to fetch their profile
       fetch(`/api/profile/${user.id}`)
         .then(response => response.json())
         .then(data => {
@@ -26,13 +24,11 @@ function AuthContent() {
           }
         })
         .catch(() => {
-          // If profile doesn't exist, redirect to onboarding
           router.push("/onboarding");
         });
     }
   }, [isLoaded, user, router]);
 
-  // Show loading state while Clerk is loading or redirecting authenticated users
   if (!isLoaded || user) {
     return (
       <div className="min-h-screen bg-[#181622] light:bg-transparent py-12 px-4 sm:px-6 lg:px-8">
@@ -60,7 +56,6 @@ function AuthContent() {
           </p>
         </div>
 
-        {/* Auth Mode Toggle */}
         <div className="mb-6">
           <div className="flex bg-white/20 light:bg-gray-100 rounded-lg p-1 backdrop-blur-sm">
             <button

@@ -41,7 +41,6 @@ export interface UseFormReturn<T extends Record<string, any>> {
   clearErrors: () => void;
 }
 
-// Common validation functions
 export const validators = {
   required: (message = "This field is required") => (value: any): string | undefined => {
     if (value === null || value === undefined || value === "" || (Array.isArray(value) && value.length === 0)) {
@@ -239,7 +238,6 @@ export function useForm<T extends Record<string, any>>({
     
     const isFormValid = validateForm();
     
-    // Mark all fields as touched
     const allTouched = Object.keys(initialValues).reduce((acc, key) => {
       acc[key as keyof T] = true;
       return acc;

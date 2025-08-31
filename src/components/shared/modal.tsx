@@ -106,14 +106,12 @@ export const Modal: React.FC<ModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
-      {/* Overlay */}
       <div 
         className="fixed inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
         onClick={handleOverlayClick}
         aria-hidden="true"
       />
       
-      {/* Modal container */}
       <div className={cn(
         "relative flex min-h-full items-center justify-center p-4",
         centerContent && "items-center"
@@ -132,7 +130,6 @@ export const Modal: React.FC<ModalProps> = ({
           aria-labelledby={title ? "modal-title" : undefined}
           tabIndex={-1}
         >
-          {/* Header */}
           {(title || showCloseButton) && (
             <div className="flex items-center justify-between p-6 border-b border-gray-700">
               {title && (
@@ -157,7 +154,6 @@ export const Modal: React.FC<ModalProps> = ({
             </div>
           )}
 
-          {/* Content */}
           <div className={cn(
             "p-6",
             size === 'full' && "flex-1 overflow-y-auto"
@@ -165,7 +161,6 @@ export const Modal: React.FC<ModalProps> = ({
             {children}
           </div>
 
-          {/* Footer */}
           {footer && (
             <div className="p-6 border-t border-gray-700">
               {footer}

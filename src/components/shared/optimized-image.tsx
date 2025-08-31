@@ -158,7 +158,6 @@ export const OptimizedImage = forwardRef<HTMLImageElement, OptimizedImageProps>(
 
   return (
     <div className={cn("relative", aspectRatio !== 'auto' && aspectRatioClasses[aspectRatio])}>
-      {/* Loading state */}
       {loading && showLoadingState && (
         <div className={cn(
           "absolute inset-0 flex items-center justify-center bg-gray-800/40 border border-gray-700/40",

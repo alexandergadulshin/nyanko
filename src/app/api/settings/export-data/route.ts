@@ -13,7 +13,6 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get user data
     const userData = await database.query.user.findFirst({
       where: eq(user.id, userId),
       columns: {
@@ -26,12 +25,10 @@ export async function GET() {
       }
     });
 
-    // Get anime list
     const userAnimeList = await database.query.animeList.findMany({
       where: eq(animeList.userId, userId),
     });
 
-    // Get favorites
     const userFavorites = await database.query.favorites.findMany({
       where: eq(favorites.userId, userId),
     });
@@ -44,7 +41,6 @@ export async function GET() {
       version: "1.0"
     };
 
-    // Create JSON file
     const fileName = `anime-web-data-${userId}-${new Date().toISOString().split('T')[0]}.json`;
     
     return new NextResponse(JSON.stringify(exportData, null, 2), {

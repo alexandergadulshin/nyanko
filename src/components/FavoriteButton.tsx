@@ -58,7 +58,6 @@ export function FavoriteButton({
       }
     } catch (error) {
       console.error("Error toggling favorite:", error);
-      // Show tooltip with error message
       setShowTooltip(true);
       setTimeout(() => setShowTooltip(false), 3000);
     } finally {
@@ -77,7 +76,7 @@ export function FavoriteButton({
   };
 
   if (!user || loading) {
-    return null; // Don't show favorite button if not signed in or still loading
+    return null;
   }
 
   return (
@@ -118,7 +117,6 @@ export function FavoriteButton({
         </span>
       </button>
 
-      {/* Tooltip */}
       {showTooltip && (
         <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg whitespace-nowrap z-10">
           {getTooltipText()}

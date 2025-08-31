@@ -69,16 +69,13 @@ export function Navbar() {
       className="z-50 transition-all duration-300 fixed top-4 left-4 right-4 bg-[#6d28d9]/80 backdrop-blur-md border border-purple-300/30 rounded-xl"
     >
       <div className="flex justify-between items-center h-16 px-6 sm:px-8 md:px-10">
-        {/* Left side - Logo */}
         <div className="flex-shrink-0">
           <Link href="/" className="text-xl font-bold text-white/90 light:text-gray-300 hover:text-white transition-colors">
             {APP_CONFIG.name}
           </Link>
         </div>
 
-        {/* Right side - Actions */}
         <div className="flex items-center space-x-2 sm:space-x-3">
-            {/* Search Button */}
             <Link
               href="/advanced-search"
               className="inline-flex items-center justify-center w-10 h-10 rounded-lg text-white/80 hover:text-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-200 light:text-gray-400 light:hover:text-gray-200"
@@ -89,7 +86,6 @@ export function Navbar() {
               </svg>
             </Link>
             
-            {/* Theme Toggle Button */}
             <button
               onClick={toggleTheme}
               className="inline-flex items-center justify-center w-10 h-10 rounded-lg text-white/80 hover:text-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-200 light:text-gray-400 light:hover:text-gray-200"
@@ -106,7 +102,6 @@ export function Navbar() {
               )}
             </button>
             
-            {/* Menu Button */}
             <div className="relative">
               <button
                 onClick={toggleMenu}
@@ -137,10 +132,8 @@ export function Navbar() {
                 </div>
               </button>
 
-              {/* Dropdown Menu */}
               {isMenuOpen && (
                 <div className="absolute right-0 top-full mt-2 w-56 bg-white/95 backdrop-blur-md rounded-xl shadow-2xl py-2 z-50 border border-gray-200/50">
-                  {/* Mobile Navigation Links */}
                   <div className="md:hidden">
                     {NAV_ITEMS.map((item) => (
                       <Link
@@ -155,14 +148,12 @@ export function Navbar() {
                     <hr className="my-2 border-gray-200/60 mx-2" />
                   </div>
 
-                  {/* Loading State */}
                   {(!isLoaded || isPending) ? (
                     <div className="px-4 py-3 text-sm text-gray-500 text-center">
                       Loading...
                     </div>
                   ) : isAuthenticated ? (
                     <>
-                      {/* User Info */}
                       <div className="px-4 py-3 border-b border-gray-200/60 mx-2 rounded-lg bg-gray-50/50">
                         <div className="flex items-center space-x-3">
                           {(profileImage || user?.imageUrl) ? (
@@ -186,7 +177,6 @@ export function Navbar() {
                         </div>
                       </div>
                       
-                      {/* User Menu Items */}
                       {USER_MENU_ITEMS.map((item) => (
                         <Link
                           key={item.href}
@@ -198,7 +188,6 @@ export function Navbar() {
                         </Link>
                       ))}
                       
-                      {/* Sign Out Button */}
                       <div className="border-t border-gray-200/60 mt-2 pt-2 mx-2">
                         {user ? (
                           <SignOutButton>
@@ -229,7 +218,6 @@ export function Navbar() {
                     </>
                   ) : (
                     <>
-                      {/* Guest Menu Items */}
                       {GUEST_MENU_ITEMS.map((item) => (
                         <Link
                           key={item.href}
@@ -252,7 +240,6 @@ export function Navbar() {
         </div>
       </div>
 
-      {/* Mobile Overlay */}
       {isMenuOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/20 transition-opacity duration-200"

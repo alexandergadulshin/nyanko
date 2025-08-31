@@ -91,7 +91,6 @@ export function useFavorites(type?: string) {
 
     const result = await response.json();
     
-    // Refresh favorites list
     await fetchFavorites();
     
     return result;
@@ -115,7 +114,6 @@ export function useFavorites(type?: string) {
       throw new Error(errorData.error || "Failed to remove from favorites");
     }
 
-    // Refresh favorites list
     await fetchFavorites();
   };
 

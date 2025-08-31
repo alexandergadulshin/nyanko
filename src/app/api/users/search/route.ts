@@ -43,9 +43,8 @@ export async function GET(request: NextRequest) {
           )
         )
       )
-      .limit(Math.min(limit, 50)); // Cap at 50 results
+      .limit(Math.min(limit, 50));
 
-    // Filter out private profiles
     const filteredUsers = users.filter(u => 
       u.profileVisibility !== "private" && u.allowFriendRequests
     );

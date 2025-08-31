@@ -4,7 +4,6 @@ import { auth } from "@clerk/nextjs/server";
 import { or, eq, and } from "drizzle-orm";
 import { requireDatabase } from "~/lib/api-utils";
 
-// Get friendship status with another user
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ userId: string }> }
@@ -30,7 +29,6 @@ export async function GET(
       });
     }
 
-    // Check if target user exists and allows friend requests
     const targetUser = await database.query.user.findFirst({
       where: eq(user.id, targetUserId),
       columns: {
@@ -44,7 +42,6 @@ export async function GET(
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    // Check if they're already friends
     const existingFriendship = await database.query.friendships.findFirst({
       where: or(
         and(eq(friendships.userId1, currentUserId), eq(friendships.userId2, targetUserId)),
@@ -60,7 +57,6 @@ export async function GET(
       });
     }
 
-    // Check for pending friend requests
     const pendingRequest = await database.query.friendRequests.findFirst({
       where: and(
         or(
@@ -87,7 +83,6 @@ export async function GET(
       }
     }
 
-    // Check if user allows friend requests
     if (!targetUser.allowFriendRequests) {
       return NextResponse.json({
         status: "not_accepting",
@@ -95,7 +90,6 @@ export async function GET(
       });
     }
 
-    // No relationship exists
     return NextResponse.json({
       status: "none",
       canSendRequest: true,

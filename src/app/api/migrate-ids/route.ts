@@ -5,7 +5,6 @@ import { enhancedAPI } from "~/lib/enhanced-api";
 import { eq, count } from "drizzle-orm";
 import { requireDatabase } from "~/lib/api-utils";
 
-// POST /api/migrate-ids - Migrate existing MAL IDs to internal ID system
 export async function POST(request: NextRequest) {
   try {
     const { userId } = await auth();
@@ -16,13 +15,12 @@ export async function POST(request: NextRequest) {
     const database = requireDatabase();
 
     const { searchParams } = new URL(request.url);
-    const migrateType = searchParams.get("type"); // "anime-list", "favorites", or "all"
+    const migrateType = searchParams.get("type");
 
     let migratedCount = 0;
     let errors: string[] = [];
 
     try {
-      // Migrate anime list entries
       if (migrateType === "anime-list" || migrateType === "all") {
         const animeListEntries = await database
           .select()
@@ -31,7 +29,6 @@ export async function POST(request: NextRequest) {
 
         for (const entry of animeListEntries) {
           try {
-            // Get or create internal ID for this anime
             const enhancedAnime = await enhancedAPI.getAnimeById(entry.animeId);
             if (enhancedAnime?.internalId) {
               console.log(`Migrated anime ${entry.animeId} to internal ID ${enhancedAnime.internalId}`);
@@ -43,7 +40,6 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Migrate favorites entries
       if (migrateType === "favorites" || migrateType === "all") {
         const favoritesEntries = await database
           .select()
@@ -99,7 +95,6 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET /api/migrate-ids - Check migration status
 export async function GET(request: NextRequest) {
   try {
     const { userId } = await auth();
@@ -109,7 +104,6 @@ export async function GET(request: NextRequest) {
 
     const database = requireDatabase();
 
-    // Count items that could be migrated
     const animeListCount = await database
       .select({ count: count() })
       .from(animeList)

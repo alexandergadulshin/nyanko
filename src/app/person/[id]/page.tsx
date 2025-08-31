@@ -131,7 +131,6 @@ export default function PersonDetailPage() {
 
   return (
     <div className="min-h-screen bg-[#181622] light:bg-transparent">
-      {/* Back Button */}
       <div className="sticky top-0 z-10 bg-[#181622]/80 light:bg-gray-100/80 backdrop-blur-sm border-b border-gray-800 light:border-gray-300">
         <div className="container mx-auto px-4 py-4">
           <button
@@ -146,7 +145,6 @@ export default function PersonDetailPage() {
 
       <div className="container mx-auto px-4 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left Column - Image and Basic Info */}
           <div className="lg:col-span-1">
             <div className="sticky top-32">
               <img

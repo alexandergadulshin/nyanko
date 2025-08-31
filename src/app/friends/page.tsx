@@ -66,7 +66,6 @@ export default function FriendsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  // Search state
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchUser[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -149,9 +148,8 @@ export default function FriendsPage() {
       }
 
       setError(null);
-      await fetchFriendsData(); // Refresh data
+      await fetchFriendsData();
       
-      // Remove user from search results since request was sent
       setSearchResults(prev => prev.filter(u => u.id !== toUserId));
     } catch (err) {
       console.error('Error sending friend request:', err);
@@ -181,7 +179,7 @@ export default function FriendsPage() {
       }
 
       setError(null);
-      await fetchFriendsData(); // Refresh data
+      await fetchFriendsData();
     } catch (err) {
       console.error(`Error ${action}ing friend request:`, err);
       setError(err instanceof Error ? err.message : `Failed to ${action} friend request`);
@@ -201,7 +199,7 @@ export default function FriendsPage() {
       }
 
       setError(null);
-      await fetchFriendsData(); // Refresh data
+      await fetchFriendsData();
     } catch (err) {
       console.error('Error cancelling friend request:', err);
       setError(err instanceof Error ? err.message : 'Failed to cancel friend request');
@@ -223,7 +221,7 @@ export default function FriendsPage() {
       }
 
       setError(null);
-      await fetchFriendsData(); // Refresh data
+      await fetchFriendsData();
     } catch (err) {
       console.error('Error removing friend:', err);
       setError(err instanceof Error ? err.message : 'Failed to remove friend');
