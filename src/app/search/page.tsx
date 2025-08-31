@@ -181,7 +181,7 @@ function SearchPageContent() {
                       {'status' in item && (
                         <div className="absolute top-2 right-2">
                           <span className={`px-2 py-1 text-xs font-semibold text-white rounded-md shadow-lg ${
-                            STATUS_COLORS[category]?.[item.status as keyof typeof STATUS_COLORS.anime] || STATUS_COLORS.default
+                            (STATUS_COLORS[category as keyof typeof STATUS_COLORS] as any)?.[item.status as string] || STATUS_COLORS.default
                           }`}>
                             {item.status}
                           </span>

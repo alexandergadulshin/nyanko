@@ -66,7 +66,7 @@ export class IdMappingService {
 
     if (result.length === 0) return null;
 
-    const { item, mapping } = result[0];
+    const { item, mapping } = result[0]!;
     return {
       ...item,
       mappings: [mapping],

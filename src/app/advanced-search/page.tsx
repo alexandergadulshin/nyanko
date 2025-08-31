@@ -368,7 +368,7 @@ function AdvancedSearchPageContent() {
                           className="w-full px-4 py-3 bg-[#6d28d9]/30 border border-purple-300/40 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400 transition-all duration-200"
                           style={SELECT_STYLES}
                         >
-                          {categoryConfig.types?.map((type: TypeOption) => (
+                          {'types' in categoryConfig && categoryConfig.types?.map((type: TypeOption) => (
                             <option key={type.value} value={type.value} className="bg-[#6d28d9] text-white">
                               {type.label}
                             </option>
@@ -384,7 +384,7 @@ function AdvancedSearchPageContent() {
                           className="w-full px-4 py-3 bg-[#6d28d9]/30 border border-purple-300/40 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400 transition-all duration-200"
                           style={SELECT_STYLES}
                         >
-                          {categoryConfig.statuses?.map((status: StatusOption) => (
+                          {'statuses' in categoryConfig && categoryConfig.statuses?.map((status: StatusOption) => (
                             <option key={status.value} value={status.value} className="bg-[#6d28d9] text-white">
                               {status.label}
                             </option>

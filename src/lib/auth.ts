@@ -27,8 +27,8 @@ export const auth = betterAuth({
     updateAge: 60 * 60 * 24,
   },
   secret: env.BETTER_AUTH_SECRET || "dev-secret-key",
-  baseURL: env.BETTER_AUTH_URL,
-  trustedOrigins: [env.BETTER_AUTH_URL],
+  baseURL: env.BETTER_AUTH_URL || "http://localhost:3000",
+  trustedOrigins: [env.BETTER_AUTH_URL || "http://localhost:3000"],
   advanced: {
     crossSubDomainCookies: {
       enabled: true,
