@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { FaSearch, FaTimes, FaChevronDown } from "react-icons/fa";
 import { jikanAPI, type SearchCategory, type SearchItem } from "~/utils/api";
 import { useRouter } from "next/navigation";
@@ -130,9 +130,9 @@ export function AnimeSearchBar({
 
   const getItemSubtitle = useCallback((item: SearchItem) => {
     if (category === 'anime') {
-      return `Episodes: ${(item as any).episodes || "Unknown"}`;
+      return `Episodes: ${(item as any).episodes ?? "Unknown"}`;
     } else if (category === 'manga') {
-      return `Chapters: ${(item as any).chapters || "Unknown"}`;
+      return `Chapters: ${(item as any).chapters ?? "Unknown"}`;
     }
     return 'about' in item ? 'Character/Person' : 'Item';
   }, [category]);

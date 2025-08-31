@@ -1,12 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { db } from "~/server/db";
 import { user } from "~/server/db/schema";
 import { eq, and, ne } from "drizzle-orm";
 import { auth } from "@clerk/nextjs/server";
+import { requireDatabase } from "~/lib/api-utils";
 
 export async function GET(request: NextRequest) {
   try {
     const { userId } = await auth();
+    const database = requireDatabase();
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -20,7 +21,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Check if username is already taken by another user
-    const existingUser = await db.query.user.findFirst({
+    const existingUser = await database.query.user.findFirst({
       where: and(
         eq(user.username, username.trim()),
         ne(user.id, userId)
@@ -43,6 +44,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { userId } = await auth();
+    const database = requireDatabase();
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -55,7 +57,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if username is already taken by another user
-    const existingUser = await db.query.user.findFirst({
+    const existingUser = await database.query.user.findFirst({
       where: and(
         eq(user.username, username.trim()),
         ne(user.id, userId)

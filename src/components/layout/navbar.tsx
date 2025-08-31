@@ -12,7 +12,6 @@ export function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { user, isLoaded } = useUser();
   const { data: session, isPending } = useSession();
-  const [scrolled, setScrolled] = useState(false);
   const { theme, toggleTheme } = useTheme();
   const [displayName, setDisplayName] = useState<string>('');
   const [profileImage, setProfileImage] = useState<string>('');
@@ -20,8 +19,8 @@ export function Navbar() {
 
   // Determine which authentication system is active
   const isAuthenticated = user || session;
-  const userName = displayName || (user ? 
-    (user.fullName || user.emailAddresses[0]?.emailAddress) : 
+  const userName = displayName ?? (user ? 
+    (user.fullName ?? user.emailAddresses[0]?.emailAddress) : 
     session?.user?.name);
 
   // Fetch user's data from database
@@ -31,7 +30,12 @@ export function Navbar() {
         try {
           const response = await fetch(`/api/profile/${user.id}`);
           if (response.ok) {
-            const data = await response.json();
+            const data = await response.json() as {
+              profile?: {
+                name?: string;
+                image?: string;
+              };
+            };
             if (data.profile?.name) {
               setDisplayName(data.profile.name);
             }
@@ -48,17 +52,9 @@ export function Navbar() {
     };
 
     if (isLoaded && user) {
-      fetchUserData();
+      void fetchUserData();
     }
-  }, [user?.id, isLoaded]);
-
-  useEffect(() => {
-    const handleScroll = () => {
-      setScrolled(window.scrollY > 10);
-    };
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
+  }, [user?.id, isLoaded, user]);
 
   const toggleMenu = () => {
     setIsMenuOpen(!isMenuOpen);
@@ -171,14 +167,14 @@ export function Navbar() {
                         <div className="flex items-center space-x-3">
                           {(profileImage || user?.imageUrl) ? (
                             <img
-                              src={profileImage || user?.imageUrl}
-                              alt={userName || 'User'}
+                              src={profileImage ?? user?.imageUrl}
+                              alt={userName ?? 'User'}
                               className="w-8 h-8 rounded-full object-cover"
                             />
                           ) : (
                             <div className="w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center">
                               <span className="text-white text-sm font-semibold">
-                                {(displayName || userName || 'U').charAt(0).toUpperCase()}
+                                {(displayName ?? userName ?? 'U').charAt(0).toUpperCase()}
                               </span>
                             </div>
                           )}

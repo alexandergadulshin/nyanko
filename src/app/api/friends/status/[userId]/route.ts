@@ -1,8 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { db } from "~/server/db";
 import { user, friendships, friendRequests } from "~/server/db/schema";
 import { auth } from "@clerk/nextjs/server";
 import { or, eq, and } from "drizzle-orm";
+import { requireDatabase } from "~/lib/api-utils";
 
 // Get friendship status with another user
 export async function GET(
@@ -11,6 +11,7 @@ export async function GET(
 ) {
   try {
     const { userId: currentUserId } = await auth();
+    const database = requireDatabase();
     
     if (!currentUserId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -30,7 +31,7 @@ export async function GET(
     }
 
     // Check if target user exists and allows friend requests
-    const targetUser = await db.query.user.findFirst({
+    const targetUser = await database.query.user.findFirst({
       where: eq(user.id, targetUserId),
       columns: {
         id: true,
@@ -44,7 +45,7 @@ export async function GET(
     }
 
     // Check if they're already friends
-    const existingFriendship = await db.query.friendships.findFirst({
+    const existingFriendship = await database.query.friendships.findFirst({
       where: or(
         and(eq(friendships.userId1, currentUserId), eq(friendships.userId2, targetUserId)),
         and(eq(friendships.userId1, targetUserId), eq(friendships.userId2, currentUserId))
@@ -60,7 +61,7 @@ export async function GET(
     }
 
     // Check for pending friend requests
-    const pendingRequest = await db.query.friendRequests.findFirst({
+    const pendingRequest = await database.query.friendRequests.findFirst({
       where: and(
         or(
           and(eq(friendRequests.fromUserId, currentUserId), eq(friendRequests.toUserId, targetUserId)),

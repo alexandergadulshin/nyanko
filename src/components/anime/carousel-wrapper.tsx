@@ -13,7 +13,7 @@ const CarouselSkeleton = () => (
       <div className="animate-pulse space-y-4 w-full max-w-4xl">
         <div className="h-8 bg-gray-700 rounded w-1/3"></div>
         <div className="flex space-x-4">
-          {[...Array(3)].map((_, i) => (
+          {Array.from({ length: 3 }, (_, i) => (
             <div key={i} className="flex-1 space-y-2">
               <div className="h-48 bg-gray-700 rounded"></div>
               <div className="h-4 bg-gray-700 rounded"></div>

@@ -8,19 +8,19 @@ const globalForDb = globalThis as unknown as {
   conn: postgres.Sql | undefined;
 };
 
-// Configure connection for production (Supabase) or development
+const CONNECTION_CONFIG = {
+  prepare: false,
+  max: env.NODE_ENV === "production" ? 10 : 1,
+  idle_timeout: 20,
+  max_lifetime: 60 * 30,
+};
+
 const connectionString = env.DATABASE_URL;
 
-// Only initialize database connection if DATABASE_URL is provided
 const conn = connectionString 
-  ? globalForDb.conn ?? postgres(connectionString, {
-      prepare: false, // Required for Supabase
-      max: env.NODE_ENV === "production" ? 10 : 1, // Connection pooling for production
-      idle_timeout: 20,
-      max_lifetime: 60 * 30, // 30 minutes
-    })
+  ? globalForDb.conn ?? postgres(connectionString, CONNECTION_CONFIG)
   : null;
 
-if (env.NODE_ENV !== "production") globalForDb.conn = conn;
+if (env.NODE_ENV !== "production" && conn) globalForDb.conn = conn;
 
 export const db = conn ? drizzle(conn, { schema }) : null;

@@ -1,29 +1,37 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 
+const TIME_CONSTANTS = {
+  SECOND: 1000,
+  MINUTE: 60 * 1000,
+  HOUR: 60 * 60 * 1000,
+  DAY: 24 * 60 * 60 * 1000,
+} as const;
+
+const FORMAT_THRESHOLDS = {
+  MILLION: 1000000,
+  THOUSAND: 1000,
+} as const;
+
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
 export function formatDate(date: Date | string): string {
-  const d = new Date(date);
-  return d.toLocaleDateString();
+  return new Date(date).toLocaleDateString();
 }
 
 export function formatDateTime(date: Date | string): string {
-  const d = new Date(date);
-  return d.toLocaleString();
+  return new Date(date).toLocaleString();
 }
 
 export function formatRelativeTime(date: Date | string): string {
   const d = new Date(date);
-  const now = new Date();
-  const diff = now.getTime() - d.getTime();
+  const diff = Date.now() - d.getTime();
   
-  const seconds = Math.floor(diff / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-  const days = Math.floor(hours / 24);
+  const days = Math.floor(diff / TIME_CONSTANTS.DAY);
+  const hours = Math.floor(diff / TIME_CONSTANTS.HOUR);
+  const minutes = Math.floor(diff / TIME_CONSTANTS.MINUTE);
   
   if (days > 0) return `${days} day${days > 1 ? 's' : ''} ago`;
   if (hours > 0) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
@@ -32,8 +40,7 @@ export function formatRelativeTime(date: Date | string): string {
 }
 
 export function truncateText(text: string, maxLength: number): string {
-  if (text.length <= maxLength) return text;
-  return text.substring(0, maxLength) + '...';
+  return text.length <= maxLength ? text : text.substring(0, maxLength) + '...';
 }
 
 export function slugify(text: string): string {
@@ -49,11 +56,11 @@ export function capitalize(text: string): string {
 }
 
 export function formatNumber(num: number): string {
-  if (num >= 1000000) {
-    return `${(num / 1000000).toFixed(1)}M`;
+  if (num >= FORMAT_THRESHOLDS.MILLION) {
+    return `${(num / FORMAT_THRESHOLDS.MILLION).toFixed(1)}M`;
   }
-  if (num >= 1000) {
-    return `${(num / 1000).toFixed(1)}K`;
+  if (num >= FORMAT_THRESHOLDS.THOUSAND) {
+    return `${(num / FORMAT_THRESHOLDS.THOUSAND).toFixed(1)}K`;
   }
   return num.toString();
 }
@@ -85,9 +92,10 @@ export function throttle<T extends (...args: any[]) => any>(
   };
 }
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export function isValidEmail(email: string): boolean {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return emailRegex.test(email);
+  return EMAIL_REGEX.test(email);
 }
 
 export function isValidUrl(url: string): boolean {

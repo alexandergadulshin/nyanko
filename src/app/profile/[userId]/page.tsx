@@ -1,11 +1,27 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { FaArrowLeft, FaEdit, FaPlus, FaSearch, FaTimes, FaHeart, FaCamera, FaUserPlus, FaUserCheck, FaSpinner, FaTrash, FaCheck, FaBan } from "react-icons/fa";
-import ProfilePictureUpload from "~/components/profile/profile-picture-upload";
 import { jikanAPI } from "~/utils/api";
+import { statusColors, statusText, type UserAnimeStatus } from "~/lib/status-utils";
+
+const STATUS_COLORS = {
+  planning: statusColors.userAnime.planning.bg,
+  watching: statusColors.userAnime.watching.bg,
+  completed: statusColors.userAnime.completed.bg,
+  paused: statusColors.userAnime.paused.bg,
+  dropped: statusColors.userAnime.dropped.bg
+} as const;
+
+const STATUS_LABELS = {
+  planning: statusText.userAnime.planning,
+  watching: statusText.userAnime.watching,
+  completed: statusText.userAnime.completed,
+  paused: statusText.userAnime.paused,
+  dropped: statusText.userAnime.dropped
+} as const;
 
 interface AnimeListItem {
   id: string;
@@ -243,15 +259,11 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
         const response = await fetch(`/api/profile/${resolvedParams.userId}`);
         
         if (!response.ok) {
-          console.error("Profile fetch failed:", response.status, response.statusText);
-          const errorText = await response.text();
-          console.error("Error details:", errorText);
           throw new Error(`Failed to fetch profile: ${response.status}`);
         }
         
         const data = await response.json();
         
-        // If it's the user's own profile and they don't have a username, redirect to onboarding
         if (isOwnProfile && (!data.profile.username || !data.profile.name)) {
           router.push("/onboarding");
           return;
@@ -260,19 +272,17 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
         setProfile(data.profile);
         setAnimeList(data.animeList || []);
         
-        // Initialize edit form with profile data
+        const profileData = data.profile;
         setEditForm({
-          name: data.profile.name || "",
-          username: data.profile.username || "",
-          bio: data.profile.bio || "",
-          image: data.profile.image || ""
+          name: profileData.name || "",
+          username: profileData.username || "",
+          bio: profileData.bio || "",
+          image: profileData.image || ""
         });
         
-        // Fetch favorites if it's the user's own profile
         if (isOwnProfile) {
           await fetchFavorites();
         } else {
-          // Fetch friendship status if viewing someone else's profile
           await fetchFriendshipStatus();
         }
       } catch (err) {
@@ -286,21 +296,62 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
     fetchProfile();
   }, [resolvedParams.userId, isOwnProfile]);
 
-  // Calculate anime statistics
-  const stats = {
-    totalAnime: animeList.length,
-    watching: animeList.filter(anime => anime.status === "watching").length,
-    completed: animeList.filter(anime => anime.status === "completed").length,
-    planning: animeList.filter(anime => anime.status === "planning").length,
-    paused: animeList.filter(anime => anime.status === "paused").length,
-    dropped: animeList.filter(anime => anime.status === "dropped").length,
-    totalEpisodes: animeList.reduce((sum, anime) => sum + anime.episodesWatched, 0),
-    totalHours: Math.round(animeList.reduce((sum, anime) => sum + (anime.episodesWatched * 24), 0) / 60), // 24 min per episode
-    averageScore: animeList.filter(anime => anime.score).length > 0 
-      ? (animeList.reduce((sum, anime) => sum + (anime.score || 0), 0) / animeList.filter(anime => anime.score).length)
-      : null,
-    totalDays: Math.round(animeList.reduce((sum, anime) => sum + (anime.episodesWatched * 24), 0) / 60 / 24 * 10) / 10,
-  };
+  const stats = useMemo(() => {
+    const statusCounts = animeList.reduce((acc, anime) => {
+      acc[anime.status] = (acc[anime.status] ?? 0) + 1;
+      return acc;
+    }, {} as Record<UserAnimeStatus, number>);
+    
+    const totalEpisodes = animeList.reduce((sum, anime) => sum + anime.episodesWatched, 0);
+    const totalMinutes = totalEpisodes * 24;
+    const withScores = animeList.filter(anime => anime.score);
+    
+    return {
+      totalAnime: animeList.length,
+      watching: statusCounts.watching ?? 0,
+      completed: statusCounts.completed ?? 0,
+      planning: statusCounts.planning ?? 0,
+      paused: statusCounts.paused ?? 0,
+      dropped: statusCounts.dropped ?? 0,
+      totalEpisodes,
+      totalHours: Math.round(totalMinutes / 60),
+      averageScore: withScores.length > 0 
+        ? withScores.reduce((sum, anime) => sum + (anime.score ?? 0), 0) / withScores.length
+        : null,
+      totalDays: Math.round(totalMinutes / (60 * 24) * 10) / 10,
+    };
+  }, [animeList]);
+
+  const favoriteCounts = useMemo(() => ({
+    anime: favorites.filter(f => f.type === "anime").length,
+    character: favorites.filter(f => f.type === "character").length,
+    person: favorites.filter(f => f.type === "person").length
+  }), [favorites]);
+
+  const FavoriteItem = React.memo(({ fav }: { fav: FavoriteItem }) => (
+    <div className="group flex items-center space-x-2 bg-gray-900/30 hover:bg-gray-900/50 rounded-lg p-2 border border-gray-700/20 transition-colors cursor-pointer">
+      <img
+        src={fav.itemImage}
+        alt={fav.itemTitle}
+        className="w-8 h-10 object-cover rounded"
+        onError={(e) => {
+          e.currentTarget.src = `https://via.placeholder.com/32x40/4f356b/ffffff?text=?`;
+        }}
+      />
+      <div className="flex-1 min-w-0">
+        <p className="text-white text-xs font-medium truncate">{fav.itemTitle}</p>
+      </div>
+      {isOwnProfile && (
+        <button
+          onClick={() => removeFromFavorites(fav.type, fav.itemId)}
+          className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-400 p-1 transition-all duration-200 hover:bg-red-500/20 rounded"
+          title="Remove from favorites"
+        >
+          <FaTimes className="w-3 h-3" />
+        </button>
+      )}
+    </div>
+  ));
 
   const handleStartEdit = () => {
     if (!profile) return;
@@ -366,7 +417,7 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
     setSearchLoading(true);
     try {
       const results = await jikanAPI.searchAnime(searchQuery);
-      setSearchResults(results.slice(0, 8)); // Limit to 8 results
+      setSearchResults(results.slice(0, 8));
     } catch (err) {
       console.error("Error searching anime:", err);
       setSearchResults([]);
@@ -377,18 +428,15 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
 
   const addToFavorites = async (anime: SearchAnime, type: "anime" | "character" | "person") => {
     try {
-      // Check if we already have 5 favorites of this type
-      const currentFavorites = favorites.filter(f => f.type === type);
-      if (currentFavorites.length >= 5) {
+      const currentCount = favoriteCounts[type];
+      if (currentCount >= 5) {
         setError(`You can only have up to 5 favorite ${type === "anime" ? "anime" : type + "s"}. Remove one first.`);
         return;
       }
 
       const response = await fetch("/api/favorites", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           type,
           itemId: anime.malId,
@@ -406,7 +454,6 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
         throw new Error(errorData.error || "Failed to add to favorites");
       }
 
-      // Refresh favorites list
       await fetchFavorites();
       setShowAddFavoriteModal(false);
       setSearchQuery("");
@@ -480,10 +527,8 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
 
   return (
     <div className="min-h-screen bg-[#181622] light:bg-transparent pt-0">
-      {/* Subtle Background */}
       <div className="absolute inset-0 bg-gradient-to-br from-purple-900/5 via-transparent to-pink-900/5"></div>
       
-      {/* Header */}
       <header className="backdrop-blur-sm bg-[#6d28d9]/60 border-b border-purple-300/20 sticky top-0 z-50 light:bg-white/85 light:border-gray-300/50">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
@@ -505,9 +550,7 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
 
       <div className="container mx-auto px-4 py-6 relative z-10">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Left Sidebar */}
           <div className="lg:col-span-1 space-y-4">
-            {/* Profile Picture */}
             <div className="bg-gray-800/60 backdrop-blur-sm rounded-xl p-12 border border-gray-700/30">
               <div className="text-center">
                 <div className="relative group">
@@ -523,7 +566,10 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
                           className="w-36 h-36 mx-auto rounded-full border-2 border-gray-600/40 object-cover shadow-lg"
                           onError={(e) => {
                             e.currentTarget.style.display = 'none';
-                            e.currentTarget.nextElementSibling.style.display = 'block';
+                            const nextElement = e.currentTarget.nextElementSibling as HTMLElement | null;
+                            if (nextElement) {
+                              nextElement.style.display = 'block';
+                            }
                           }}
                         />
                         <div className="w-36 h-36 mx-auto rounded-full border-2 border-gray-600/40 bg-gray-600 shadow-lg hidden"></div>
@@ -532,7 +578,6 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
                       <div className="w-36 h-36 mx-auto rounded-full border-2 border-gray-600/40 bg-gray-600 shadow-lg"></div>
                     )}
                     
-                    {/* Camera overlay for own profile */}
                     {isOwnProfile && (
                       <div className="absolute inset-0 bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center">
                         <div className="text-center">
@@ -546,7 +591,6 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
               </div>
             </div>
 
-            {/* Quick Navigation */}
             <div className="bg-gray-800/60 backdrop-blur-sm rounded-xl p-4 border border-gray-700/30">
               <h3 className="font-semibold text-gray-100 mb-3 text-sm">Navigation</h3>
               <div className="space-y-2">
@@ -588,9 +632,7 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
             </div>
           </div>
 
-          {/* Main Content Area */}
           <div className="lg:col-span-3 space-y-6">
-            {/* Profile Header */}
             <div className="bg-gray-800/60 backdrop-blur-sm rounded-xl p-6 border border-gray-700/30">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
@@ -730,7 +772,6 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
                   </div>
                 </div>
                 
-                {/* Edit Buttons */}
                 {isOwnProfile && isEditing && (
                   <div className="flex gap-2">
                     <button
@@ -750,7 +791,6 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
                 )}
               </div>
 
-              {/* Bio */}
               <div className="mt-4">
                 {isEditing ? (
                   <textarea
@@ -768,7 +808,6 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
               </div>
             </div>
 
-            {/* Statistics Section */}
             <div id="statistics" className="bg-gray-800/60 backdrop-blur-sm rounded-xl p-6 border border-gray-700/30">
               <div className="flex items-center justify-between mb-4 border-b border-gray-700/40 pb-2">
                 <h2 className="text-xl font-bold text-white">Statistics</h2>
@@ -782,7 +821,6 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
                 )}
               </div>
               
-              {/* Days Watched Progress Bar by Status */}
               <div className="mb-6">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-gray-200 font-medium">Days Watched by Status</span>
@@ -790,104 +828,57 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
                 </div>
                 
                 {(() => {
-                  // Calculate days for each status
-                  const statusDays = {
-                    completed: animeList.filter(a => a.status === "completed").reduce((sum, anime) => sum + (anime.episodesWatched * 24), 0) / 60 / 24,
-                    watching: animeList.filter(a => a.status === "watching").reduce((sum, anime) => sum + (anime.episodesWatched * 24), 0) / 60 / 24,
-                    paused: animeList.filter(a => a.status === "paused").reduce((sum, anime) => sum + (anime.episodesWatched * 24), 0) / 60 / 24,
-                    dropped: animeList.filter(a => a.status === "dropped").reduce((sum, anime) => sum + (anime.episodesWatched * 24), 0) / 60 / 24,
-                    planning: animeList.filter(a => a.status === "planning").reduce((sum, anime) => sum + (anime.episodesWatched * 24), 0) / 60 / 24
-                  };
+                  const statusDays = animeList.reduce((acc, anime) => {
+                    const days = anime.episodesWatched * 24 / 60 / 24;
+                    acc[anime.status] = (acc[anime.status] ?? 0) + days;
+                    return acc;
+                  }, {} as Record<UserAnimeStatus, number>);
                   
-                  const totalDays = Math.max(stats.totalDays, 0.1); // Avoid division by zero
-                  
-                  const percentages = {
-                    completed: (statusDays.completed / totalDays) * 100,
-                    watching: (statusDays.watching / totalDays) * 100,
-                    paused: (statusDays.paused / totalDays) * 100,
-                    dropped: (statusDays.dropped / totalDays) * 100,
-                    planning: (statusDays.planning / totalDays) * 100
-                  };
+                  const totalDays = Math.max(stats.totalDays, 0.1);
+                  const percentages = Object.entries(statusDays).reduce((acc, [status, days]) => {
+                    acc[status as UserAnimeStatus] = (days / totalDays) * 100;
+                    return acc;
+                  }, {} as Record<UserAnimeStatus, number>);
 
                   return (
                     <>
                       <div className="w-full bg-gray-700/40 rounded-full h-4 overflow-hidden flex">
-                        {percentages.completed > 0 && (
-                          <div 
-                            className="bg-green-500 h-full transition-all duration-500"
-                            style={{ width: `${percentages.completed}%` }}
-                            title={`Completed: ${Math.round(statusDays.completed * 10) / 10} days`}
-                          ></div>
-                        )}
-                        {percentages.watching > 0 && (
-                          <div 
-                            className="bg-blue-500 h-full transition-all duration-500"
-                            style={{ width: `${percentages.watching}%` }}
-                            title={`Watching: ${Math.round(statusDays.watching * 10) / 10} days`}
-                          ></div>
-                        )}
-                        {percentages.paused > 0 && (
-                          <div 
-                            className="bg-yellow-500 h-full transition-all duration-500"
-                            style={{ width: `${percentages.paused}%` }}
-                            title={`On Hold: ${Math.round(statusDays.paused * 10) / 10} days`}
-                          ></div>
-                        )}
-                        {percentages.dropped > 0 && (
-                          <div 
-                            className="bg-red-500 h-full transition-all duration-500"
-                            style={{ width: `${percentages.dropped}%` }}
-                            title={`Dropped: ${Math.round(statusDays.dropped * 10) / 10} days`}
-                          ></div>
-                        )}
-                        {percentages.planning > 0 && (
-                          <div 
-                            className="bg-gray-500 h-full transition-all duration-500"
-                            style={{ width: `${percentages.planning}%` }}
-                            title={`Planning: ${Math.round(statusDays.planning * 10) / 10} days`}
-                          ></div>
-                        )}
+                        {Object.entries(percentages).map(([status, percentage]) => {
+                          if (percentage <= 0) return null;
+                          const statusKey = status as UserAnimeStatus;
+                          const days = Math.round(statusDays[statusKey] * 10) / 10;
+                          const statusLabel = status === 'paused' ? 'On Hold' : status.charAt(0).toUpperCase() + status.slice(1);
+                          
+                          return (
+                            <div 
+                              key={status}
+                              className={`${STATUS_COLORS[statusKey]} h-full transition-all duration-500`}
+                              style={{ width: `${percentage}%` }}
+                              title={`${statusLabel}: ${days} days`}
+                            />
+                          );
+                        })}
                       </div>
                       
-                      {/* Legend */}
                       <div className="flex flex-wrap gap-3 text-xs text-gray-400 mt-2">
-                        {statusDays.completed > 0 && (
-                          <div className="flex items-center space-x-1">
-                            <div className="w-3 h-3 bg-green-500 rounded-sm"></div>
-                            <span>Completed ({Math.round(statusDays.completed * 10) / 10}d)</span>
-                          </div>
-                        )}
-                        {statusDays.watching > 0 && (
-                          <div className="flex items-center space-x-1">
-                            <div className="w-3 h-3 bg-blue-500 rounded-sm"></div>
-                            <span>Watching ({Math.round(statusDays.watching * 10) / 10}d)</span>
-                          </div>
-                        )}
-                        {statusDays.paused > 0 && (
-                          <div className="flex items-center space-x-1">
-                            <div className="w-3 h-3 bg-yellow-500 rounded-sm"></div>
-                            <span>On Hold ({Math.round(statusDays.paused * 10) / 10}d)</span>
-                          </div>
-                        )}
-                        {statusDays.dropped > 0 && (
-                          <div className="flex items-center space-x-1">
-                            <div className="w-3 h-3 bg-red-500 rounded-sm"></div>
-                            <span>Dropped ({Math.round(statusDays.dropped * 10) / 10}d)</span>
-                          </div>
-                        )}
-                        {statusDays.planning > 0 && (
-                          <div className="flex items-center space-x-1">
-                            <div className="w-3 h-3 bg-gray-500 rounded-sm"></div>
-                            <span>Planning ({Math.round(statusDays.planning * 10) / 10}d)</span>
-                          </div>
-                        )}
+                        {Object.entries(statusDays).map(([status, days]) => {
+                          if (days <= 0) return null;
+                          const statusKey = status as UserAnimeStatus;
+                          const statusLabel = status === 'paused' ? 'On Hold' : status.charAt(0).toUpperCase() + status.slice(1);
+                          
+                          return (
+                            <div key={status} className="flex items-center space-x-1">
+                              <div className={`w-3 h-3 ${STATUS_COLORS[statusKey]} rounded-sm`} />
+                              <span>{statusLabel} ({Math.round(days * 10) / 10}d)</span>
+                            </div>
+                          );
+                        })}
                       </div>
                     </>
                   );
                 })()}
               </div>
 
-              {/* Quick Stats */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="text-center p-3 bg-gray-700/20 rounded-lg">
                   <div className="text-lg font-bold text-white mb-1">{stats.totalEpisodes.toLocaleString()}</div>
@@ -899,7 +890,6 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
                 </div>
               </div>
 
-              {/* Status Breakdown - Simplified */}
               <div className="mt-4 grid grid-cols-2 md:grid-cols-5 gap-2 text-sm">
                 <div className="text-center p-2 bg-blue-500/10 rounded border border-blue-400/20">
                   <div className="font-medium text-blue-300">{stats.watching}</div>
@@ -925,7 +915,6 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
             </div>
 
 
-            {/* Favorites Section */}
             <div id="favorites" className="bg-gray-800/60 backdrop-blur-sm rounded-xl p-6 border border-gray-700/30">
               <div className="flex items-center justify-between mb-4 border-b border-gray-700/40 pb-2">
                 <h2 className="text-xl font-bold text-white">Favorites</h2>
@@ -941,37 +930,15 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {/* Favorite Anime */}
                 <div>
                   <h3 className="font-medium text-gray-200 mb-3 flex items-center justify-between">
                     <span>Favorite Anime</span>
-                    <span className="text-xs text-gray-500">({favorites.filter(f => f.type === "anime").length}/5)</span>
+                    <span className="text-xs text-gray-500">({favoriteCounts.anime}/5)</span>
                   </h3>
                   <div className="space-y-2 max-h-60 overflow-y-auto">
                     {favorites.filter(f => f.type === "anime").length > 0 ? (
                       favorites.filter(f => f.type === "anime").map((fav) => (
-                        <div key={fav.id} className="group flex items-center space-x-2 bg-gray-900/30 hover:bg-gray-900/50 rounded-lg p-2 border border-gray-700/20 transition-colors cursor-pointer">
-                          <img
-                            src={fav.itemImage}
-                            alt={fav.itemTitle}
-                            className="w-8 h-10 object-cover rounded"
-                            onError={(e) => {
-                              e.currentTarget.src = `https://via.placeholder.com/32x40/4f356b/ffffff?text=?`;
-                            }}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-white text-xs font-medium truncate">{fav.itemTitle}</p>
-                          </div>
-                          {isOwnProfile && (
-                            <button
-                              onClick={() => removeFromFavorites(fav.type, fav.itemId)}
-                              className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-400 p-1 transition-all duration-200 hover:bg-red-500/20 rounded"
-                              title="Remove from favorites"
-                            >
-                              <FaTimes className="w-3 h-3" />
-                            </button>
-                          )}
-                        </div>
+                        <FavoriteItem key={fav.id} fav={fav} />
                       ))
                     ) : (
                       <div className="bg-gray-900/30 rounded-lg p-4 border border-gray-700/20 text-center">
@@ -981,37 +948,15 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
                   </div>
                 </div>
 
-                {/* Favorite Characters */}
                 <div>
                   <h3 className="font-medium text-gray-200 mb-3 flex items-center justify-between">
                     <span>Favorite Characters</span>
-                    <span className="text-xs text-gray-500">({favorites.filter(f => f.type === "character").length}/5)</span>
+                    <span className="text-xs text-gray-500">({favoriteCounts.character}/5)</span>
                   </h3>
                   <div className="space-y-2 max-h-60 overflow-y-auto">
                     {favorites.filter(f => f.type === "character").length > 0 ? (
                       favorites.filter(f => f.type === "character").map((fav) => (
-                        <div key={fav.id} className="group flex items-center space-x-2 bg-gray-900/30 hover:bg-gray-900/50 rounded-lg p-2 border border-gray-700/20 transition-colors cursor-pointer">
-                          <img
-                            src={fav.itemImage}
-                            alt={fav.itemTitle}
-                            className="w-8 h-10 object-cover rounded"
-                            onError={(e) => {
-                              e.currentTarget.src = `https://via.placeholder.com/32x40/4f356b/ffffff?text=?`;
-                            }}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-white text-xs font-medium truncate">{fav.itemTitle}</p>
-                          </div>
-                          {isOwnProfile && (
-                            <button
-                              onClick={() => removeFromFavorites(fav.type, fav.itemId)}
-                              className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-400 p-1 transition-all duration-200 hover:bg-red-500/20 rounded"
-                              title="Remove from favorites"
-                            >
-                              <FaTimes className="w-3 h-3" />
-                            </button>
-                          )}
-                        </div>
+                        <FavoriteItem key={fav.id} fav={fav} />
                       ))
                     ) : (
                       <div className="bg-gray-900/30 rounded-lg p-4 border border-gray-700/20 text-center">
@@ -1021,37 +966,15 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
                   </div>
                 </div>
 
-                {/* Favorite People */}
                 <div>
                   <h3 className="font-medium text-gray-200 mb-3 flex items-center justify-between">
                     <span>Favorite People</span>
-                    <span className="text-xs text-gray-500">({favorites.filter(f => f.type === "person").length}/5)</span>
+                    <span className="text-xs text-gray-500">({favoriteCounts.person}/5)</span>
                   </h3>
                   <div className="space-y-2 max-h-60 overflow-y-auto">
                     {favorites.filter(f => f.type === "person").length > 0 ? (
                       favorites.filter(f => f.type === "person").map((fav) => (
-                        <div key={fav.id} className="group flex items-center space-x-2 bg-gray-900/30 hover:bg-gray-900/50 rounded-lg p-2 border border-gray-700/20 transition-colors cursor-pointer">
-                          <img
-                            src={fav.itemImage}
-                            alt={fav.itemTitle}
-                            className="w-8 h-10 object-cover rounded"
-                            onError={(e) => {
-                              e.currentTarget.src = `https://via.placeholder.com/32x40/4f356b/ffffff?text=?`;
-                            }}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-white text-xs font-medium truncate">{fav.itemTitle}</p>
-                          </div>
-                          {isOwnProfile && (
-                            <button
-                              onClick={() => removeFromFavorites(fav.type, fav.itemId)}
-                              className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-400 p-1 transition-all duration-200 hover:bg-red-500/20 rounded"
-                              title="Remove from favorites"
-                            >
-                              <FaTimes className="w-3 h-3" />
-                            </button>
-                          )}
-                        </div>
+                        <FavoriteItem key={fav.id} fav={fav} />
                       ))
                     ) : (
                       <div className="bg-gray-900/30 rounded-lg p-4 border border-gray-700/20 text-center">
@@ -1063,7 +986,6 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
               </div>
             </div>
 
-            {/* Recent Activity */}
             <div id="recent-activity" className="bg-gray-800/60 backdrop-blur-sm rounded-xl p-6 border border-gray-700/30">
               <h2 className="text-xl font-bold text-white mb-4 border-b border-gray-700/40 pb-2">Recent Activity</h2>
               <div className="space-y-3">
@@ -1072,10 +994,7 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
                     <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
                     <span className="text-gray-300 flex-1 text-sm">
                       <span className="text-white font-medium">
-                        {anime.status === 'completed' ? 'Completed' : 
-                         anime.status === 'watching' ? 'Currently watching' :
-                         anime.status === 'planning' ? 'Added to Plan to Watch' :
-                         'Updated'} 
+                        {STATUS_LABELS[anime.status] || 'Updated'}
                       </span>
                       <a href="#" className="text-blue-400 hover:text-blue-300 mx-1 transition-colors duration-200">{anime.animeTitle}</a>
                       <span className="text-gray-500">• {new Date(anime.updatedAt).toLocaleDateString()}</span>
@@ -1093,7 +1012,6 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
         </div>
       </div>
 
-      {/* Add Favorites Modal */}
       {showAddFavoriteModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-gray-800 rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -1110,7 +1028,6 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
             </div>
             
             <div className="p-6">
-              {/* Type Selection */}
               <div className="mb-4">
                 <label className="block text-gray-300 text-sm mb-2">Category</label>
                 <div className="flex space-x-2">
@@ -1121,10 +1038,10 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
                         ? "bg-purple-600 text-white" 
                         : "bg-gray-700 text-gray-300 hover:bg-gray-600"
                     }`}
-                    disabled={favorites.filter(f => f.type === "anime").length >= 5}
+                    disabled={favoriteCounts.anime >= 5}
                   >
                     <span>Anime</span>
-                    <span className="ml-1 text-xs opacity-70">({favorites.filter(f => f.type === "anime").length}/5)</span>
+                    <span className="ml-1 text-xs opacity-70">({favoriteCounts.anime}/5)</span>
                   </button>
                   <button
                     onClick={() => setFavoriteType("character")}
@@ -1133,10 +1050,10 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
                         ? "bg-purple-600 text-white" 
                         : "bg-gray-700 text-gray-300 hover:bg-gray-600"
                     }`}
-                    disabled={favorites.filter(f => f.type === "character").length >= 5}
+                    disabled={favoriteCounts.character >= 5}
                   >
                     <span>Characters</span>
-                    <span className="ml-1 text-xs opacity-70">({favorites.filter(f => f.type === "character").length}/5)</span>
+                    <span className="ml-1 text-xs opacity-70">({favoriteCounts.character}/5)</span>
                   </button>
                   <button
                     onClick={() => setFavoriteType("person")}
@@ -1145,15 +1062,14 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
                         ? "bg-purple-600 text-white" 
                         : "bg-gray-700 text-gray-300 hover:bg-gray-600"
                     }`}
-                    disabled={favorites.filter(f => f.type === "person").length >= 5}
+                    disabled={favoriteCounts.person >= 5}
                   >
                     <span>People</span>
-                    <span className="ml-1 text-xs opacity-70">({favorites.filter(f => f.type === "person").length}/5)</span>
+                    <span className="ml-1 text-xs opacity-70">({favoriteCounts.person}/5)</span>
                   </button>
                 </div>
               </div>
 
-              {/* Search - Only show for anime for now */}
               {favoriteType === "anime" && (
                 <>
                   <div className="flex space-x-2 mb-4">
@@ -1175,7 +1091,6 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
                     </button>
                   </div>
 
-                  {/* Search Results */}
                   {searchResults.length > 0 && (
                     <div className="space-y-3">
                       {searchResults.map((anime) => (
@@ -1208,7 +1123,6 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
                 </>
               )}
 
-              {/* Note for characters and people */}
               {(favoriteType === "character" || favoriteType === "person") && (
                 <div className="text-center py-8">
                   <div className="text-gray-400 text-sm">
@@ -1221,7 +1135,6 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
         </div>
       )}
 
-      {/* Error Display */}
       {error && (
         <div className="fixed top-4 right-4 bg-red-600 text-white px-4 py-2 rounded-lg z-50">
           {error}

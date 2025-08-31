@@ -1,16 +1,14 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { db } from "~/server/db";
 import { items, externalIdMappings } from "~/server/db/schema";
 import { eq, and } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
+import { requireDatabase } from "~/lib/api-utils";
 
 // GET /api/id-mapping - Get internal item by external ID
 export async function GET(request: NextRequest) {
   try {
-    if (!db) {
-      return NextResponse.json({ error: "Database not available" }, { status: 503 });
-    }
+    const database = requireDatabase();
 
     const { searchParams } = new URL(request.url);
     const externalService = searchParams.get("service"); // e.g., "myanimelist"
@@ -23,7 +21,7 @@ export async function GET(request: NextRequest) {
 
     if (externalId) {
       // Look up internal item by external ID
-      const mapping = await db
+      const mapping = await database
         .select({
           internalId: externalIdMappings.internalId,
           externalId: externalIdMappings.externalId,
@@ -55,7 +53,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ mapping: mapping[0] });
     } else if (internalId) {
       // Look up external mappings by internal ID
-      const mappings = await db
+      const mappings = await database
         .select({
           internalId: externalIdMappings.internalId,
           externalService: externalIdMappings.externalService,
@@ -87,9 +85,7 @@ export async function GET(request: NextRequest) {
 // POST /api/id-mapping - Create new item with external ID mapping
 export async function POST(request: NextRequest) {
   try {
-    if (!db) {
-      return NextResponse.json({ error: "Database not available" }, { status: 503 });
-    }
+    const database = requireDatabase();
 
     // Only allow authenticated users to create mappings (could be admin-only in production)
     const { userId } = await auth();
@@ -127,7 +123,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if mapping already exists
-    const existingMapping = await db
+    const existingMapping = await database
       .select()
       .from(externalIdMappings)
       .where(
@@ -147,7 +143,7 @@ export async function POST(request: NextRequest) {
 
     // Create internal item
     const internalId = uuidv4();
-    const newItem = await db
+    const newItem = await database
       .insert(items)
       .values({
         id: internalId,
@@ -161,7 +157,7 @@ export async function POST(request: NextRequest) {
 
     // Create external ID mapping
     const mappingId = uuidv4();
-    const newMapping = await db
+    const newMapping = await database
       .insert(externalIdMappings)
       .values({
         id: mappingId,
@@ -190,9 +186,7 @@ export async function POST(request: NextRequest) {
 // PUT /api/id-mapping - Update existing mapping
 export async function PUT(request: NextRequest) {
   try {
-    if (!db) {
-      return NextResponse.json({ error: "Database not available" }, { status: 503 });
-    }
+    const database = requireDatabase();
 
     const { userId } = await auth();
     if (!userId) {
@@ -221,7 +215,7 @@ export async function PUT(request: NextRequest) {
     }
 
     // Find existing mapping
-    const existingMapping = await db
+    const existingMapping = await database
       .select()
       .from(externalIdMappings)
       .where(
@@ -236,10 +230,10 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Mapping not found" }, { status: 404 });
     }
 
-    const mapping = existingMapping[0];
+    const mapping = existingMapping[0]!;
 
     // Update mapping
-    const updatedMapping = await db
+    const updatedMapping = await database
       .update(externalIdMappings)
       .set({
         externalData: externalData ? JSON.stringify(externalData) : mapping.externalData,
@@ -252,7 +246,7 @@ export async function PUT(request: NextRequest) {
     // Update item if provided
     let updatedItem = null;
     if (itemUpdate) {
-      updatedItem = await db
+      updatedItem = await database
         .update(items)
         .set({
           title: itemUpdate.title || undefined,

@@ -3,7 +3,7 @@
 import { useSession, signOut } from "~/lib/auth-client";
 
 export function UserProfile() {
-  const { data: session, isPending, error } = useSession();
+  const { data: session, isPending } = useSession();
 
   if (isPending) {
     return (

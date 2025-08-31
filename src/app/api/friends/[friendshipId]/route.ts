@@ -1,8 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { db } from "~/server/db";
 import { friendships } from "~/server/db/schema";
 import { auth } from "@clerk/nextjs/server";
 import { eq, and, or } from "drizzle-orm";
+import { requireDatabase } from "~/lib/api-utils";
 
 // Remove a friendship
 export async function DELETE(
@@ -11,6 +11,7 @@ export async function DELETE(
 ) {
   try {
     const { userId } = await auth();
+    const database = requireDatabase();
     
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -23,7 +24,7 @@ export async function DELETE(
     }
 
     // Find and delete the friendship (only if user is part of the friendship)
-    const deletedFriendship = await db.delete(friendships)
+    const deletedFriendship = await database.delete(friendships)
       .where(
         and(
           eq(friendships.id, friendshipId),

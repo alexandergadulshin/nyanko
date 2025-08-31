@@ -74,7 +74,7 @@ export default function PersonDetailPage() {
           description: personData.about || 'No description available.',
           about: personData.about,
           image: personData.images?.jpg?.image_url || '',
-          favorites: personData.favorites || 0,
+          favorites: personData.favorites ?? 0,
           website_url: personData.website_url,
           anime: personData.anime?.slice(0, 12) || [],
           manga: personData.manga?.slice(0, 12) || [],

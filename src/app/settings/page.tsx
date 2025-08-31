@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useTheme } from "~/hooks/use-theme";
@@ -40,6 +40,26 @@ interface UserSettings {
   };
 }
 
+const TABS = [
+  { id: 'profile' as const, label: 'Profile', icon: <FaUser /> },
+  { id: 'privacy' as const, label: 'Privacy', icon: <FaEye /> },
+  { id: 'preferences' as const, label: 'Preferences', icon: <FaPalette /> },
+  { id: 'account' as const, label: 'Account', icon: <FaShieldAlt /> },
+];
+
+const PRIVACY_LABELS = {
+  showWatchList: 'Allow others to see your anime watch list',
+  showFavorites: 'Allow others to see your favorite anime',
+  showStats: 'Allow others to see your viewing statistics',
+};
+
+const TIME_CONSTANTS = {
+  DAY_MS: 24 * 60 * 60 * 1000,
+  WEEK_MS: 7 * 24 * 60 * 60 * 1000,
+  MESSAGE_TIMEOUT: 3000,
+  ERROR_TIMEOUT: 5000,
+};
+
 export default function SettingsPage() {
   const { user, isLoaded } = useUser();
   const router = useRouter();
@@ -52,33 +72,6 @@ export default function SettingsPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [originalSettings, setOriginalSettings] = useState<{name: string, username: string}>({name: '', username: ''});
-
-  // Helper functions for rate limiting
-  const canChangeName = () => {
-    if (!settings.lastNameChange) return true;
-    const lastChange = new Date(settings.lastNameChange);
-    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    return lastChange <= oneDayAgo;
-  };
-
-  const canChangeUsername = () => {
-    if (!settings.lastUsernameChange) return true;
-    const lastChange = new Date(settings.lastUsernameChange);
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    return lastChange <= sevenDaysAgo;
-  };
-
-  const getNextNameChangeDate = () => {
-    if (!settings.lastNameChange) return null;
-    const lastChange = new Date(settings.lastNameChange);
-    return new Date(lastChange.getTime() + 24 * 60 * 60 * 1000);
-  };
-
-  const getNextUsernameChangeDate = () => {
-    if (!settings.lastUsernameChange) return null;
-    const lastChange = new Date(settings.lastUsernameChange);
-    return new Date(lastChange.getTime() + 7 * 24 * 60 * 60 * 1000);
-  };
   const [settings, setSettings] = useState<UserSettings>({
     displayName: '',
     username: '',
@@ -100,6 +93,37 @@ export default function SettingsPage() {
     },
   });
 
+  const canChangeName = useCallback(() => {
+    if (!settings.lastNameChange) return true;
+    const lastChange = new Date(settings.lastNameChange);
+    const oneDayAgo = new Date(Date.now() - TIME_CONSTANTS.DAY_MS);
+    return lastChange <= oneDayAgo;
+  }, [settings.lastNameChange]);
+
+  const canChangeUsername = useCallback(() => {
+    if (!settings.lastUsernameChange) return true;
+    const lastChange = new Date(settings.lastUsernameChange);
+    const sevenDaysAgo = new Date(Date.now() - TIME_CONSTANTS.WEEK_MS);
+    return lastChange <= sevenDaysAgo;
+  }, [settings.lastUsernameChange]);
+
+  const getNextNameChangeDate = useCallback(() => {
+    if (!settings.lastNameChange) return null;
+    const lastChange = new Date(settings.lastNameChange);
+    return new Date(lastChange.getTime() + TIME_CONSTANTS.DAY_MS);
+  }, [settings.lastNameChange]);
+
+  const getNextUsernameChangeDate = useCallback(() => {
+    if (!settings.lastUsernameChange) return null;
+    const lastChange = new Date(settings.lastUsernameChange);
+    return new Date(lastChange.getTime() + TIME_CONSTANTS.WEEK_MS);
+  }, [settings.lastUsernameChange]);
+
+  const showMessage = useCallback((message: string, isError = false) => {
+    setSaveMessage(message);
+    setTimeout(() => setSaveMessage(null), isError ? TIME_CONSTANTS.ERROR_TIMEOUT : TIME_CONSTANTS.MESSAGE_TIMEOUT);
+  }, []);
+
   useEffect(() => {
     if (!isLoaded) return;
     
@@ -108,40 +132,52 @@ export default function SettingsPage() {
       return;
     }
 
-    // Load user settings from API
     const loadSettings = async () => {
       try {
         const response = await fetch('/api/settings');
         if (response.ok) {
-          const data = await response.json();
+          const data = await response.json() as {
+            user: {
+              name?: string;
+              username?: string;
+              bio?: string;
+              email?: string;
+              image?: string;
+              allowFriendRequests?: boolean;
+              lastNameChange?: string;
+              lastUsernameChange?: string;
+              profileVisibility?: string;
+              showWatchList?: boolean;
+              showFavorites?: boolean;
+              showStats?: boolean;
+            }
+          };
           setSettings(prev => ({
             ...prev,
-            displayName: data.user.name || '',
-            username: data.user.username || '',
-            bio: data.user.bio || '',
-            email: data.user.email || user.emailAddresses[0]?.emailAddress || '',
-            profileImage: data.user.image || user.imageUrl || '',
-            allowFriendRequests: data.user.allowFriendRequests !== undefined ? data.user.allowFriendRequests : true,
+            displayName: data.user.name ?? '',
+            username: data.user.username ?? '',
+            bio: data.user.bio ?? '',
+            email: data.user.email ?? user.emailAddresses[0]?.emailAddress ?? '',
+            profileImage: data.user.image ?? user.imageUrl ?? '',
+            allowFriendRequests: data.user.allowFriendRequests ?? true,
             lastNameChange: data.user.lastNameChange,
             lastUsernameChange: data.user.lastUsernameChange,
             privacy: {
               ...prev.privacy,
-              profileVisibility: data.user.profileVisibility || 'public',
-              showWatchList: data.user.showWatchList !== undefined ? data.user.showWatchList : true,
-              showFavorites: data.user.showFavorites !== undefined ? data.user.showFavorites : true,
-              showStats: data.user.showStats !== undefined ? data.user.showStats : true,
+              profileVisibility: (data.user.profileVisibility as 'public' | 'friends' | 'private') ?? 'public',
+              showWatchList: data.user.showWatchList ?? true,
+              showFavorites: data.user.showFavorites ?? true,
+              showStats: data.user.showStats ?? true,
             },
           }));
           
-          // Store original values for comparison
           setOriginalSettings({
-            name: data.user.name || '',
-            username: data.user.username || '',
+            name: data.user.name ?? '',
+            username: data.user.username ?? '',
           });
         }
       } catch (err) {
         console.error('Failed to load settings:', err);
-        // Fallback to Clerk data
         setSettings(prev => ({
           ...prev,
           displayName: user.fullName || '',
@@ -154,36 +190,38 @@ export default function SettingsPage() {
     loadSettings();
   }, [user, isLoaded, router]);
 
-  const handleSave = async () => {
+  const saveSettings = useCallback(async (updatedSettings: Partial<UserSettings>) => {
+    const response = await fetch('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        displayName: updatedSettings.displayName ?? settings.displayName,
+        username: updatedSettings.username ?? settings.username,
+        bio: updatedSettings.bio ?? settings.bio,
+        image: updatedSettings.profileImage ?? settings.profileImage,
+        profileVisibility: updatedSettings.privacy?.profileVisibility ?? settings.privacy.profileVisibility,
+        showWatchList: updatedSettings.privacy?.showWatchList ?? settings.privacy.showWatchList,
+        showFavorites: updatedSettings.privacy?.showFavorites ?? settings.privacy.showFavorites,
+        showStats: updatedSettings.privacy?.showStats ?? settings.privacy.showStats,
+        allowFriendRequests: updatedSettings.allowFriendRequests ?? settings.allowFriendRequests,
+      }),
+    });
+
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.error || 'Failed to save settings');
+    }
+
+    return response.json();
+  }, [settings]);
+
+  const handleSave = useCallback(async () => {
     setLoading(true);
     setSaveMessage(null);
 
     try {
-      const response = await fetch('/api/settings', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          displayName: settings.displayName,
-          username: settings.username,
-          bio: settings.bio,
-          image: settings.profileImage,
-          profileVisibility: settings.privacy.profileVisibility,
-          showWatchList: settings.privacy.showWatchList,
-          showFavorites: settings.privacy.showFavorites,
-          showStats: settings.privacy.showStats,
-          allowFriendRequests: settings.allowFriendRequests,
-        }),
-      });
+      await saveSettings(settings);
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to save settings');
-      }
-
-      // Immediately update rate limiting timestamps if changes were made
       const now = new Date().toISOString();
       const nameChanged = settings.displayName !== originalSettings.name;
       const usernameChanged = settings.username !== originalSettings.username;
@@ -195,24 +233,21 @@ export default function SettingsPage() {
           lastUsernameChange: usernameChanged ? now : prev.lastUsernameChange,
         }));
         
-        // Update original settings for future comparisons
         setOriginalSettings({
           name: settings.displayName,
           username: settings.username,
         });
       }
 
-      setSaveMessage('Settings saved successfully!');
-      setTimeout(() => setSaveMessage(null), 3000);
+      showMessage('Settings saved successfully!');
     } catch (err) {
-      setSaveMessage(err instanceof Error ? err.message : 'Failed to save settings. Please try again.');
-      setTimeout(() => setSaveMessage(null), 3000);
+      showMessage(err instanceof Error ? err.message : 'Failed to save settings. Please try again.', true);
     } finally {
       setLoading(false);
     }
-  };
+  }, [settings, originalSettings, saveSettings, showMessage]);
 
-  const checkUsernameAvailability = async (username: string) => {
+  const checkUsernameAvailability = useCallback(async (username: string) => {
     if (!username.trim()) {
       setUsernameAvailable(null);
       return;
@@ -222,9 +257,7 @@ export default function SettingsPage() {
     try {
       const response = await fetch('/api/settings/username-check', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: username.trim() }),
       });
 
@@ -236,65 +269,36 @@ export default function SettingsPage() {
     } finally {
       setUsernameChecking(false);
     }
-  };
+  }, []);
 
-  const handleImageUploadComplete = async (res: any) => {
-    if (res && res[0] && res[0].url) {
-      setSettings(prev => ({ ...prev, profileImage: res[0].url }));
+  const handleImageUploadComplete = useCallback(async (res: any) => {
+    if (res?.[0]?.url) {
+      const newImage = res[0].url;
+      setSettings(prev => ({ ...prev, profileImage: newImage }));
       
-      // Automatically save the uploaded image to database
       try {
-        const response = await fetch('/api/settings', {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            displayName: settings.displayName,
-            username: settings.username,
-            bio: settings.bio,
-            image: res[0].url,
-            profileVisibility: settings.privacy.profileVisibility,
-            showWatchList: settings.privacy.showWatchList,
-            showFavorites: settings.privacy.showFavorites,
-            showStats: settings.privacy.showStats,
-            allowFriendRequests: settings.allowFriendRequests,
-          }),
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to save profile image');
-        }
-
-        setSaveMessage('Profile image uploaded and saved successfully!');
-        setTimeout(() => setSaveMessage(null), 3000);
+        await saveSettings({ profileImage: newImage });
+        showMessage('Profile image uploaded and saved successfully!');
       } catch (err) {
-        setSaveMessage('Image uploaded but failed to save to profile. Please click Save Changes.');
-        setTimeout(() => setSaveMessage(null), 5000);
+        showMessage('Image uploaded but failed to save to profile. Please click Save Changes.', true);
       }
     }
-  };
+  }, [saveSettings, showMessage]);
 
-  const handleImageUploadError = (error: Error) => {
-    setSaveMessage(`Upload failed: ${error.message}`);
-    setTimeout(() => setSaveMessage(null), 3000);
-  };
+  const handleImageUploadError = useCallback((error: Error) => {
+    showMessage(`Upload failed: ${error.message}`, true);
+  }, [showMessage]);
 
-
-
-  const handleDeleteAccount = async () => {
+  const handleDeleteAccount = useCallback(async () => {
     if (deleteConfirmText !== 'DELETE MY ACCOUNT') {
-      setSaveMessage('Please type "DELETE MY ACCOUNT" to confirm');
-      setTimeout(() => setSaveMessage(null), 3000);
+      showMessage('Please type "DELETE MY ACCOUNT" to confirm', true);
       return;
     }
 
     try {
       const response = await fetch('/api/settings/delete-account', {
         method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ confirmDelete: true }),
       });
 
@@ -304,37 +308,33 @@ export default function SettingsPage() {
 
       router.push('/auth?message=Account deleted successfully');
     } catch (err) {
-      setSaveMessage('Failed to delete account');
-      setTimeout(() => setSaveMessage(null), 3000);
+      showMessage('Failed to delete account', true);
     }
-  };
+  }, [deleteConfirmText, router, showMessage]);
 
-  const handleInputChange = (section: keyof UserSettings, field: string, value: any) => {
+  const handleInputChange = useCallback((section: keyof UserSettings, field: string, value: unknown) => {
     setSettings(prev => ({
       ...prev,
       [section]: {
-        ...prev[section],
+        ...prev[section] as Record<string, unknown>,
         [field]: value,
       },
     }));
-  };
+  }, []);
 
-  const handleThemeChange = (newTheme: 'dark' | 'light') => {
-    // Update the settings state
+  const handleThemeChange = useCallback((newTheme: 'dark' | 'light') => {
     handleInputChange('preferences', 'theme', newTheme);
-    
-    // Actually change the theme via context
     if (newTheme !== theme) {
       toggleTheme();
     }
-  };
+  }, [theme, toggleTheme, handleInputChange]);
 
-  const tabs = [
-    { id: 'profile' as const, label: 'Profile', icon: <FaUser /> },
-    { id: 'privacy' as const, label: 'Privacy', icon: <FaEye /> },
-    { id: 'preferences' as const, label: 'Preferences', icon: <FaPalette /> },
-    { id: 'account' as const, label: 'Account', icon: <FaShieldAlt /> },
-  ];
+  const handleUsernameChange = useCallback((value: string) => {
+    setSettings(prev => ({ ...prev, username: value }));
+    if (value !== settings.username) {
+      setTimeout(() => checkUsernameAvailability(value), 500);
+    }
+  }, [settings.username, checkUsernameAvailability]);
 
   if (!isLoaded || !user) {
     return (
@@ -347,10 +347,18 @@ export default function SettingsPage() {
     );
   }
 
+  const inputClassName = (canChange: boolean) => 
+    `w-full px-4 py-3 border rounded-lg text-white placeholder-purple-200/60 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400 ${
+      canChange 
+        ? 'bg-[#6d28d9]/30 border-purple-300/40' 
+        : 'bg-gray-600/30 border-gray-500/40 cursor-not-allowed opacity-60'
+    }`;
+
+  const toggleClassName = "w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all duration-300 peer-checked:bg-purple-600 hover:bg-gray-500";
+
   return (
     <div className="min-h-screen bg-[#181622] light:bg-transparent">
       <div className="container mx-auto px-4 py-8">
-        {/* Header */}
         <div className="mb-8 text-center">
           <h1 className="text-4xl font-bold mb-2">
             <span className="bg-gradient-to-r from-purple-400 via-pink-400 to-purple-600 bg-clip-text text-transparent">
@@ -361,11 +369,10 @@ export default function SettingsPage() {
         </div>
 
         <div className="flex flex-col lg:flex-row gap-8">
-          {/* Sidebar */}
           <div className="lg:w-64 flex-shrink-0">
             <div className="bg-gradient-to-br from-[#6d28d9]/40 to-[#3d2954]/60 backdrop-blur-md border border-purple-300/20 rounded-xl p-4 sticky top-4">
               <nav className="space-y-2">
-                {tabs.map((tab) => (
+                {TABS.map((tab) => (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
@@ -383,16 +390,13 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* Main Content */}
           <div className="flex-1">
             <div className="bg-gradient-to-br from-[#6d28d9]/40 to-[#3d2954]/60 backdrop-blur-md border border-purple-300/20 rounded-xl p-6">
               
-              {/* Profile Tab */}
               {activeTab === 'profile' && (
                 <div className="space-y-6">
                   <h2 className="text-2xl font-bold text-white mb-6">Profile Settings</h2>
                   
-                  {/* Profile Image */}
                   <div className="flex items-center space-x-6">
                     <div className="relative">
                       {settings.profileImage ? (
@@ -402,7 +406,10 @@ export default function SettingsPage() {
                           className="w-36 h-36 rounded-full object-cover border-2 border-purple-500/30 shadow-lg"
                           onError={(e) => {
                             e.currentTarget.style.display = 'none';
-                            e.currentTarget.nextElementSibling.style.display = 'block';
+                            const nextSibling = e.currentTarget.nextElementSibling as HTMLElement | null;
+                            if (nextSibling) {
+                              nextSibling.style.display = 'block';
+                            }
                           }}
                         />
                       ) : (
@@ -428,7 +435,6 @@ export default function SettingsPage() {
                     </div>
                   </div>
 
-                  {/* Basic Info */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                       <label className="block text-sm font-medium text-purple-200 mb-2">
@@ -439,11 +445,7 @@ export default function SettingsPage() {
                         value={settings.displayName}
                         onChange={(e) => setSettings(prev => ({ ...prev, displayName: e.target.value }))}
                         disabled={!canChangeName()}
-                        className={`w-full px-4 py-3 border rounded-lg text-white placeholder-purple-200/60 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400 ${
-                          canChangeName() 
-                            ? 'bg-[#6d28d9]/30 border-purple-300/40' 
-                            : 'bg-gray-600/30 border-gray-500/40 cursor-not-allowed opacity-60'
-                        }`}
+                        className={inputClassName(canChangeName())}
                       />
                       {!canChangeName() && (
                         <p className="text-orange-400 text-xs mt-1">
@@ -465,18 +467,9 @@ export default function SettingsPage() {
                         <input
                           type="text"
                           value={settings.username}
-                          onChange={(e) => {
-                            setSettings(prev => ({ ...prev, username: e.target.value }));
-                            if (e.target.value !== settings.username) {
-                              setTimeout(() => checkUsernameAvailability(e.target.value), 500);
-                            }
-                          }}
+                          onChange={(e) => handleUsernameChange(e.target.value)}
                           disabled={!canChangeUsername()}
-                          className={`w-full px-4 py-3 pr-10 border rounded-lg text-white placeholder-purple-200/60 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400 ${
-                            canChangeUsername() 
-                              ? 'bg-[#6d28d9]/30 border-purple-300/40' 
-                              : 'bg-gray-600/30 border-gray-500/40 cursor-not-allowed opacity-60'
-                          }`}
+                          className={`${inputClassName(canChangeUsername())} pr-10`}
                           placeholder="Choose a unique username"
                         />
                         <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
@@ -523,7 +516,6 @@ export default function SettingsPage() {
                 </div>
               )}
 
-              {/* Privacy Tab */}
               {activeTab === 'privacy' && (
                 <div className="space-y-6">
                   <div className="flex items-center justify-between">
@@ -565,9 +557,7 @@ export default function SettingsPage() {
                             {key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
                           </h3>
                           <p className="text-gray-400 text-sm">
-                            {key === 'showWatchList' && 'Allow others to see your anime watch list'}
-                            {key === 'showFavorites' && 'Allow others to see your favorite anime'}
-                            {key === 'showStats' && 'Allow others to see your viewing statistics'}
+                            {PRIVACY_LABELS[key as keyof typeof PRIVACY_LABELS]}
                           </p>
                         </div>
                         <label className="relative inline-flex items-center cursor-pointer">
@@ -577,12 +567,11 @@ export default function SettingsPage() {
                             onChange={(e) => handleInputChange('privacy', key, e.target.checked)}
                             className="sr-only peer"
                           />
-                          <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all duration-300 peer-checked:bg-purple-600 hover:bg-gray-500"></div>
+                          <div className={toggleClassName}></div>
                         </label>
                       </div>
                     ))}
                     
-                    {/* Friend Requests Setting */}
                     <div className="flex items-center justify-between p-4 bg-[#6d28d9]/20 rounded-lg">
                       <div>
                         <h3 className="text-white font-medium">Allow Friend Requests</h3>
@@ -595,14 +584,13 @@ export default function SettingsPage() {
                           onChange={(e) => setSettings(prev => ({ ...prev, allowFriendRequests: e.target.checked }))}
                           className="sr-only peer"
                         />
-                        <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all duration-300 peer-checked:bg-purple-600 hover:bg-gray-500"></div>
+                        <div className={toggleClassName}></div>
                       </label>
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* Preferences Tab */}
               {activeTab === 'preferences' && (
                 <div className="space-y-6">
                   <h2 className="text-2xl font-bold text-white mb-6">Preferences</h2>
@@ -638,7 +626,6 @@ export default function SettingsPage() {
                         <option value="light">Light</option>
                       </select>
                     </div>
-
                   </div>
 
                   <div className="space-y-4">
@@ -654,7 +641,7 @@ export default function SettingsPage() {
                           onChange={(e) => handleInputChange('preferences', 'autoMarkCompleted', e.target.checked)}
                           className="sr-only peer"
                         />
-                        <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                        <div className={toggleClassName}></div>
                       </label>
                     </div>
 
@@ -670,14 +657,13 @@ export default function SettingsPage() {
                           onChange={(e) => handleInputChange('preferences', 'spoilerWarnings', e.target.checked)}
                           className="sr-only peer"
                         />
-                        <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                        <div className={toggleClassName}></div>
                       </label>
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* Account Tab */}
               {activeTab === 'account' && (
                 <div className="space-y-6">
                   <h2 className="text-2xl font-bold text-white mb-6">Account Settings</h2>
@@ -694,7 +680,6 @@ export default function SettingsPage() {
                         className="w-full px-4 py-3 bg-[#6d28d9]/30 border border-purple-300/40 rounded-lg text-white placeholder-purple-200/60 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400"
                       />
                     </div>
-
 
                     <div className="border-t border-purple-300/20 pt-6">
                       <h3 className="text-lg font-semibold text-red-400 mb-4">Danger Zone</h3>
@@ -752,7 +737,6 @@ export default function SettingsPage() {
                 </div>
               )}
 
-              {/* Save Button */}
               <div className="flex items-center justify-between mt-8 pt-6 border-t border-purple-300/20">
                 <div>
                   {saveMessage && (

@@ -1,12 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { db } from "~/server/db";
 import { user } from "~/server/db/schema";
 import { auth } from "@clerk/nextjs/server";
-import { like, or, ne, eq } from "drizzle-orm";
+import { like, or, ne, and } from "drizzle-orm";
+import { requireDatabase } from "~/lib/api-utils";
 
 export async function GET(request: NextRequest) {
   try {
     const { userId } = await auth();
+    const database = requireDatabase();
     
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -22,7 +23,7 @@ export async function GET(request: NextRequest) {
 
     const searchTerm = `%${query.trim()}%`;
 
-    const users = await db
+    const users = await database
       .select({
         id: user.id,
         name: user.name,
@@ -34,15 +35,12 @@ export async function GET(request: NextRequest) {
       })
       .from(user)
       .where(
-        // Don't include the searching user and search by name or username
-        ne(user.id, userId)
-        // Only show users who allow their profiles to be found (public or friends visibility)
-        // and allow friend requests
-      )
-      .where(
-        or(
-          like(user.name, searchTerm),
-          like(user.username, searchTerm)
+        and(
+          ne(user.id, userId),
+          or(
+            like(user.name, searchTerm),
+            like(user.username, searchTerm)
+          )
         )
       )
       .limit(Math.min(limit, 50)); // Cap at 50 results

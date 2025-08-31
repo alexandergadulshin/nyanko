@@ -10,10 +10,14 @@ import {
   FaCheck, 
   FaTimes, 
   FaSpinner,
-  FaTrash,
-  FaHeart,
-  FaEye
+  FaTrash
 } from "react-icons/fa";
+
+const TAB_CONFIG = {
+  friends: { icon: FaUserFriends, label: 'My Friends' },
+  requests: { icon: FaUserPlus, label: 'Requests' },
+  search: { icon: FaSearch, label: 'Find Friends' }
+} as const;
 
 interface Friend {
   id: string;
@@ -256,7 +260,6 @@ export default function FriendsPage() {
   return (
     <div className="min-h-screen bg-[#181622] light:bg-transparent">
       <div className="container mx-auto px-4 py-8">
-        {/* Header */}
         <div className="mb-8 text-center">
           <h1 className="text-4xl font-bold mb-2">
             <span className="bg-gradient-to-r from-purple-400 via-pink-400 to-purple-600 bg-clip-text text-transparent">
@@ -267,62 +270,44 @@ export default function FriendsPage() {
         </div>
 
         <div className="flex flex-col lg:flex-row gap-8">
-          {/* Sidebar */}
           <div className="lg:w-64 flex-shrink-0">
             <div className="bg-gradient-to-br from-[#6d28d9]/40 to-[#3d2954]/60 backdrop-blur-md border border-purple-300/20 rounded-xl p-4 sticky top-4">
               <nav className="space-y-2">
-                <button
-                  onClick={() => setActiveTab('friends')}
-                  className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 text-left ${
-                    activeTab === 'friends'
-                      ? 'bg-purple-600 text-white shadow-lg'
-                      : 'text-gray-300 hover:text-white hover:bg-purple-500/30'
-                  }`}
-                >
-                  <FaUserFriends className="w-5 h-5" />
-                  <span className="font-medium">My Friends</span>
-                  <span className="ml-auto text-xs bg-purple-500/30 px-2 py-1 rounded-full">
-                    {friends.length}
-                  </span>
-                </button>
-
-                <button
-                  onClick={() => setActiveTab('requests')}
-                  className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 text-left ${
-                    activeTab === 'requests'
-                      ? 'bg-purple-600 text-white shadow-lg'
-                      : 'text-gray-300 hover:text-white hover:bg-purple-500/30'
-                  }`}
-                >
-                  <FaHeart className="w-5 h-5" />
-                  <span className="font-medium">Requests</span>
-                  {incomingRequests.length > 0 && (
-                    <span className="ml-auto text-xs bg-red-500 px-2 py-1 rounded-full">
-                      {incomingRequests.length}
-                    </span>
-                  )}
-                </button>
-
-                <button
-                  onClick={() => setActiveTab('search')}
-                  className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 text-left ${
-                    activeTab === 'search'
-                      ? 'bg-purple-600 text-white shadow-lg'
-                      : 'text-gray-300 hover:text-white hover:bg-purple-500/30'
-                  }`}
-                >
-                  <FaSearch className="w-5 h-5" />
-                  <span className="font-medium">Find Friends</span>
-                </button>
+                {Object.entries(TAB_CONFIG).map(([tabKey, config]) => {
+                  const IconComponent = config.icon;
+                  const isActive = activeTab === tabKey;
+                  const showBadge = tabKey === 'friends' ? friends.length : 
+                                  tabKey === 'requests' ? incomingRequests.length : 0;
+                  
+                  return (
+                    <button
+                      key={tabKey}
+                      onClick={() => setActiveTab(tabKey as keyof typeof TAB_CONFIG)}
+                      className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 text-left ${
+                        isActive
+                          ? 'bg-purple-600 text-white shadow-lg'
+                          : 'text-gray-300 hover:text-white hover:bg-purple-500/30'
+                      }`}
+                    >
+                      <IconComponent className="w-5 h-5" />
+                      <span className="font-medium">{config.label}</span>
+                      {showBadge > 0 && (
+                        <span className={`ml-auto text-xs px-2 py-1 rounded-full ${
+                          tabKey === 'requests' ? 'bg-red-500' : 'bg-purple-500/30'
+                        }`}>
+                          {showBadge}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </nav>
             </div>
           </div>
 
-          {/* Main Content */}
           <div className="flex-1">
             <div className="bg-gradient-to-br from-[#6d28d9]/40 to-[#3d2954]/60 backdrop-blur-md border border-purple-300/20 rounded-xl p-6">
               
-              {/* Friends Tab */}
               {activeTab === 'friends' && (
                 <div className="space-y-6">
                   <div className="flex items-center justify-between">
@@ -398,12 +383,10 @@ export default function FriendsPage() {
                 </div>
               )}
 
-              {/* Requests Tab */}
               {activeTab === 'requests' && (
                 <div className="space-y-6">
                   <h2 className="text-2xl font-bold text-white mb-6">Friend Requests</h2>
 
-                  {/* Incoming Requests */}
                   <div>
                     <h3 className="text-lg font-semibold text-white mb-4">
                       Incoming Requests ({incomingRequests.length})
@@ -464,7 +447,6 @@ export default function FriendsPage() {
                     )}
                   </div>
 
-                  {/* Outgoing Requests */}
                   <div>
                     <h3 className="text-lg font-semibold text-white mb-4">
                       Sent Requests ({outgoingRequests.length})
@@ -518,12 +500,10 @@ export default function FriendsPage() {
                 </div>
               )}
 
-              {/* Search Tab */}
               {activeTab === 'search' && (
                 <div className="space-y-6">
                   <h2 className="text-2xl font-bold text-white mb-6">Find Friends</h2>
 
-                  {/* Search Bar */}
                   <div className="flex space-x-2">
                     <input
                       type="text"
@@ -547,7 +527,6 @@ export default function FriendsPage() {
                     </button>
                   </div>
 
-                  {/* Search Results */}
                   {searchResults.length > 0 && (
                     <div className="space-y-3">
                       <h3 className="text-lg font-semibold text-white">Search Results</h3>
@@ -614,7 +593,6 @@ export default function FriendsPage() {
         </div>
       </div>
 
-      {/* Error Display */}
       {error && (
         <div className="fixed top-4 right-4 bg-red-600 text-white px-4 py-2 rounded-lg z-50 max-w-sm">
           {error}

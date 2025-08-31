@@ -7,41 +7,99 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { FaStar, FaHeart, FaFilter, FaSort, FaTimes, FaPlay, FaUsers, FaTheaterMasks, FaBook } from "react-icons/fa";
 import { jikanAPI, type GenreItem, type SearchCategory, type SearchItem } from "~/utils/api";
 
-const ANIME_TYPES = [
-  { value: "", label: "All Types" },
-  { value: "tv", label: "TV" },
-  { value: "movie", label: "Movie" },
-  { value: "ova", label: "OVA" },
-  { value: "special", label: "Special" },
-  { value: "ona", label: "ONA" },
-  { value: "music", label: "Music" },
-];
+interface TypeOption {
+  value: string;
+  label: string;
+}
 
-const ANIME_STATUS = [
-  { value: "", label: "All Status" },
-  { value: "airing", label: "Currently Airing" },
-  { value: "complete", label: "Finished Airing" },
-  { value: "upcoming", label: "Not Yet Aired" },
-];
+interface StatusOption {
+  value: string;
+  label: string;
+}
 
-const MANGA_TYPES = [
-  { value: "", label: "All Types" },
-  { value: "manga", label: "Manga" },
-  { value: "novel", label: "Light Novel" },
-  { value: "lightnovel", label: "Light Novel" },
-  { value: "oneshot", label: "One-shot" },
-  { value: "doujin", label: "Doujinshi" },
-  { value: "manhwa", label: "Manhwa" },
-  { value: "manhua", label: "Manhua" },
-];
 
-const MANGA_STATUS = [
-  { value: "", label: "All Status" },
-  { value: "publishing", label: "Publishing" },
-  { value: "complete", label: "Finished" },
-  { value: "upcoming", label: "Not Yet Published" },
-  { value: "discontinued", label: "Discontinued" },
-];
+const CATEGORY_CONFIGS = {
+  anime: {
+    label: 'Anime',
+    icon: <FaPlay className="w-4 h-4" />,
+    types: [
+      { value: "", label: "All Types" },
+      { value: "tv", label: "TV" },
+      { value: "movie", label: "Movie" },
+      { value: "ova", label: "OVA" },
+      { value: "special", label: "Special" },
+      { value: "ona", label: "ONA" },
+      { value: "music", label: "Music" },
+    ],
+    statuses: [
+      { value: "", label: "All Status" },
+      { value: "airing", label: "Currently Airing" },
+      { value: "complete", label: "Finished Airing" },
+      { value: "upcoming", label: "Not Yet Aired" },
+    ],
+    orderByOptions: [
+      { value: "score", label: "Score" },
+      { value: "rank", label: "Rank" },
+      { value: "title", label: "Title" },
+      { value: "mal_id", label: "MAL ID" },
+      { value: "start_date", label: "Start Date" },
+      { value: "end_date", label: "End Date" },
+      { value: "scored_by", label: "Scored By" },
+      { value: "popularity", label: "Popularity" },
+    ]
+  },
+  manga: {
+    label: 'Manga',
+    icon: <FaBook className="w-4 h-4" />,
+    types: [
+      { value: "", label: "All Types" },
+      { value: "manga", label: "Manga" },
+      { value: "novel", label: "Light Novel" },
+      { value: "lightnovel", label: "Light Novel" },
+      { value: "oneshot", label: "One-shot" },
+      { value: "doujin", label: "Doujinshi" },
+      { value: "manhwa", label: "Manhwa" },
+      { value: "manhua", label: "Manhua" },
+    ],
+    statuses: [
+      { value: "", label: "All Status" },
+      { value: "publishing", label: "Publishing" },
+      { value: "complete", label: "Finished" },
+      { value: "upcoming", label: "Not Yet Published" },
+      { value: "discontinued", label: "Discontinued" },
+    ],
+    orderByOptions: [
+      { value: "score", label: "Score" },
+      { value: "rank", label: "Rank" },
+      { value: "title", label: "Title" },
+      { value: "mal_id", label: "MAL ID" },
+      { value: "start_date", label: "Start Date" },
+      { value: "end_date", label: "End Date" },
+      { value: "scored_by", label: "Scored By" },
+      { value: "popularity", label: "Popularity" },
+      { value: "chapters", label: "Chapters" },
+      { value: "volumes", label: "Volumes" },
+    ]
+  },
+  characters: {
+    label: 'Characters',
+    icon: <FaUsers className="w-4 h-4" />,
+    orderByOptions: [
+      { value: "name", label: "Name" },
+      { value: "mal_id", label: "MAL ID" },
+      { value: "favorites", label: "Favorites" },
+    ]
+  },
+  people: {
+    label: 'People',
+    icon: <FaTheaterMasks className="w-4 h-4" />,
+    orderByOptions: [
+      { value: "name", label: "Name" },
+      { value: "mal_id", label: "MAL ID" },
+      { value: "favorites", label: "Favorites" },
+    ]
+  }
+} as const;
 
 const RATINGS = [
   { value: "", label: "All Ratings" },
@@ -53,41 +111,43 @@ const RATINGS = [
   { value: "rx", label: "Rx - Hentai" },
 ];
 
-const ANIME_ORDER_BY_OPTIONS = [
-  { value: "score", label: "Score" },
-  { value: "rank", label: "Rank" },
-  { value: "title", label: "Title" },
-  { value: "mal_id", label: "MAL ID" },
-  { value: "start_date", label: "Start Date" },
-  { value: "end_date", label: "End Date" },
-  { value: "scored_by", label: "Scored By" },
-  { value: "popularity", label: "Popularity" },
+const SCORE_OPTIONS = [
+  { value: 0, label: "Any Score" },
+  { value: 1, label: "1.0+" },
+  { value: 2, label: "2.0+" },
+  { value: 3, label: "3.0+" },
+  { value: 4, label: "4.0+" },
+  { value: 5, label: "5.0+" },
+  { value: 6, label: "6.0+" },
+  { value: 7, label: "7.0+" },
+  { value: 8, label: "8.0+" },
+  { value: 9, label: "9.0+" },
 ];
 
-const MANGA_ORDER_BY_OPTIONS = [
-  { value: "score", label: "Score" },
-  { value: "rank", label: "Rank" },
-  { value: "title", label: "Title" },
-  { value: "mal_id", label: "MAL ID" },
-  { value: "start_date", label: "Start Date" },
-  { value: "end_date", label: "End Date" },
-  { value: "scored_by", label: "Scored By" },
-  { value: "popularity", label: "Popularity" },
-  { value: "chapters", label: "Chapters" },
-  { value: "volumes", label: "Volumes" },
+const FAVORITES_OPTIONS = [
+  { value: 0, label: "Any Amount" },
+  { value: 100, label: "100+" },
+  { value: 500, label: "500+" },
+  { value: 1000, label: "1,000+" },
+  { value: 5000, label: "5,000+" },
+  { value: 10000, label: "10,000+" },
 ];
 
-const PEOPLE_ORDER_BY_OPTIONS = [
-  { value: "name", label: "Name" },
-  { value: "mal_id", label: "MAL ID" },
-  { value: "favorites", label: "Favorites" },
-];
+const STATUS_COLORS = {
+  "Airing Now": "bg-green-500",
+  "Scheduled": "bg-blue-500",
+  "Movie": "bg-purple-500",
+  "Publishing": "bg-green-500",
+  "Finished": "bg-blue-500",
+} as const;
 
-const CHARACTER_ORDER_BY_OPTIONS = [
-  { value: "name", label: "Name" },
-  { value: "mal_id", label: "MAL ID" },
-  { value: "favorites", label: "Favorites" },
-];
+const SELECT_STYLES = {
+  backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='rgb(196 181 253)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e")`,
+  backgroundRepeat: 'no-repeat',
+  backgroundPosition: 'right 12px center',
+  backgroundSize: '16px',
+  appearance: 'none'
+} as const;
 
 interface SearchFilters {
   query: string;
@@ -102,6 +162,19 @@ interface SearchFilters {
   sort: 'asc' | 'desc';
 }
 
+const initialFilters: SearchFilters = {
+  query: "",
+  category: "anime",
+  type: "",
+  status: "",
+  rating: "",
+  genres: [],
+  excludeGenres: [],
+  minScore: 0,
+  orderBy: "score",
+  sort: "desc",
+};
+
 function AdvancedSearchPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -113,16 +186,9 @@ function AdvancedSearchPageContent() {
   const [showFilters, setShowFilters] = useState(true);
   
   const [filters, setFilters] = useState<SearchFilters>({
+    ...initialFilters,
     query: searchParams.get("q") ?? "",
     category: (searchParams.get("category") as SearchCategory) ?? "anime",
-    type: "",
-    status: "",
-    rating: "",
-    genres: [],
-    excludeGenres: [],
-    minScore: 0,
-    orderBy: "score",
-    sort: "desc",
   });
 
   useEffect(() => {
@@ -131,20 +197,18 @@ function AdvancedSearchPageContent() {
         const genreList = await jikanAPI.getGenres();
         setGenres(genreList);
         
-        // Check if we got fallback genres (they have count: 0)
         if (genreList.length > 0 && genreList.every(genre => genre.count === 0)) {
           console.log("Using fallback genres due to API issues");
         }
       } catch (err) {
         console.error("Failed to load genres:", err);
         if (err instanceof Error) {
-          if (err.message.includes('rate limited') || err.message.includes('429')) {
-            setError("API rate limited. Please wait a moment and refresh the page.");
-          } else if (err.message.includes('Server error')) {
-            setError("API temporarily unavailable. Please try again later.");
-          } else {
-            setError("Failed to load genres. Some filters may not be available.");
-          }
+          const errorMsg = err.message.includes('rate limited') || err.message.includes('429')
+            ? "API rate limited. Please wait a moment and refresh the page."
+            : err.message.includes('Server error')
+            ? "API temporarily unavailable. Please try again later."
+            : "Failed to load genres. Some filters may not be available.";
+          setError(errorMsg);
         }
       }
     };
@@ -157,25 +221,20 @@ function AdvancedSearchPageContent() {
     setError(null);
     
     try {
-      let searchResults: SearchItem[];
-      
-      if (filters.category === 'anime') {
-        searchResults = await jikanAPI.advancedSearch({
-          query: filters.query,
-          type: filters.type,
-          status: filters.status,
-          rating: filters.rating,
-          genres: filters.genres,
-          excludeGenres: filters.excludeGenres,
-          minScore: filters.minScore > 0 ? filters.minScore : undefined,
-          orderBy: filters.orderBy,
-          sort: filters.sort,
-          limit: 48,
-        });
-      } else {
-        // For non-anime categories, use simple search
-        searchResults = await jikanAPI.searchMultiCategory(filters.query, filters.category, 48);
-      }
+      const searchResults = filters.category === 'anime' 
+        ? await jikanAPI.advancedSearch({
+            query: filters.query,
+            type: filters.type,
+            status: filters.status,
+            rating: filters.rating,
+            genres: filters.genres,
+            excludeGenres: filters.excludeGenres,
+            minScore: filters.minScore > 0 ? filters.minScore : undefined,
+            orderBy: filters.orderBy,
+            sort: filters.sort,
+            limit: 48,
+          })
+        : await jikanAPI.searchMultiCategory(filters.query, filters.category, 48);
       
       setResults(searchResults);
     } catch (err) {
@@ -187,10 +246,9 @@ function AdvancedSearchPageContent() {
     } finally {
       setLoading(false);
     }
-  }, [filters.category, filters.query, filters.type, filters.status, filters.rating, filters.genres, filters.excludeGenres, filters.minScore, filters.orderBy, filters.sort]);
+  }, [filters]);
 
   useEffect(() => {
-    // Only search if we have a meaningful query (2+ characters) or other filters
     const hasValidQuery = filters.query.trim().length >= 2;
     const hasOtherFilters = filters.type || filters.status || filters.rating || 
                            filters.genres.length > 0 || filters.excludeGenres.length > 0 ||
@@ -199,8 +257,7 @@ function AdvancedSearchPageContent() {
     if (hasValidQuery || hasOtherFilters) {
       void performSearch();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters]);
+  }, [filters, performSearch]);
 
   const handleFilterChange = (key: keyof SearchFilters, value: unknown) => {
     setFilters(prev => ({ ...prev, [key]: value as SearchFilters[typeof key] }));
@@ -215,61 +272,28 @@ function AdvancedSearchPageContent() {
       [key]: prev[key].includes(genreId) 
         ? prev[key].filter(id => id !== genreId)
         : [...prev[key], genreId],
-      [otherKey]: prev[otherKey].filter(id => id !== genreId), // Remove from other list
+      [otherKey]: prev[otherKey].filter(id => id !== genreId),
     }));
   };
 
-  const clearFilters = () => {
-    setFilters({
-      query: "",
-      category: "anime",
-      type: "",
-      status: "",
-      rating: "",
-      genres: [],
-      excludeGenres: [],
-      minScore: 0,
-      orderBy: "score",
-      sort: "desc",
-    });
-  };
+  const clearFilters = () => setFilters(initialFilters);
 
   const handleItemClick = (item: SearchItem) => {
-    const path = filters.category === 'anime' ? `/anime/${item.malId}` :
-                 filters.category === 'manga' ? `/manga/${item.malId}` :
-                 filters.category === 'characters' ? `/character/${item.malId}` :
-                 `/person/${item.malId}`;
-    router.push(path);
+    const pathMap = {
+      anime: `/anime/${item.malId}`,
+      manga: `/manga/${item.malId}`,
+      characters: `/character/${item.malId}`,
+      people: `/person/${item.malId}`,
+    } as const;
+    router.push(pathMap[filters.category]);
   };
 
-  const getCategoryLabel = (cat: SearchCategory) => {
-    switch (cat) {
-      case 'anime': return 'Anime';
-      case 'characters': return 'Characters';
-      case 'people': return 'People';
-      case 'manga': return 'Manga';
-      default: return 'Anime';
-    }
-  };
-
-  const getCategoryIcon = (cat: SearchCategory) => {
-    switch (cat) {
-      case 'anime': return <FaPlay className="w-4 h-4" />;
-      case 'characters': return <FaUsers className="w-4 h-4" />;
-      case 'people': return <FaTheaterMasks className="w-4 h-4" />;
-      case 'manga': return <FaBook className="w-4 h-4" />;
-      default: return <FaPlay className="w-4 h-4" />;
-    }
-  };
-
-  const getItemTitle = (item: SearchItem) => {
-    return 'title' in item ? item.title : item.name;
-  };
+  const categoryConfig = CATEGORY_CONFIGS[filters.category];
+  const getItemTitle = (item: SearchItem) => 'title' in item ? item.title : item.name;
 
   return (
     <div className="min-h-screen bg-[#181622] light:bg-transparent">
       <div className="container mx-auto px-4 py-8">
-        {/* Header */}
         <div className="mb-8 text-center">
           <h1 className="text-4xl font-bold mb-2">
             <span className="bg-gradient-to-r from-purple-400 via-pink-400 to-purple-600 bg-clip-text text-transparent">
@@ -279,9 +303,7 @@ function AdvancedSearchPageContent() {
           <div className="mt-4 w-[calc(100%-2rem)] max-w-6xl h-1 bg-gradient-to-r from-purple-500 to-pink-500 mx-auto rounded-full"></div>
         </div>
 
-
         <div className="flex flex-col lg:flex-row gap-8">
-          {/* Filters Sidebar */}
           <div className="lg:w-80 flex-shrink-0">
             <div className="bg-gradient-to-br from-[#6d28d9]/40 to-[#3d2954]/60 backdrop-blur-md border border-purple-300/20 rounded-xl p-6 sticky top-4 shadow-2xl">
               <div className="flex items-center justify-between mb-6">
@@ -301,13 +323,12 @@ function AdvancedSearchPageContent() {
 
               {showFilters && (
                 <div className="space-y-6">
-                  {/* Category Selection */}
                   <div>
                     <label className="block text-sm font-medium text-purple-200 mb-2">
                       Search Category
                     </label>
                     <div className="grid grid-cols-2 gap-2">
-                      {(['anime', 'characters', 'people', 'manga'] as SearchCategory[]).map((cat) => (
+                      {(Object.keys(CATEGORY_CONFIGS) as SearchCategory[]).map((cat) => (
                         <button
                           key={cat}
                           onClick={() => handleFilterChange('category', cat)}
@@ -317,14 +338,13 @@ function AdvancedSearchPageContent() {
                               : 'bg-[#6d28d9]/30 text-gray-300 hover:text-white hover:bg-purple-500/30 border border-purple-300/40'
                           }`}
                         >
-{getCategoryIcon(cat)}
-                          <span className="text-center leading-tight">{getCategoryLabel(cat)}</span>
+                          {CATEGORY_CONFIGS[cat].icon}
+                          <span className="text-center leading-tight">{CATEGORY_CONFIGS[cat].label}</span>
                         </button>
                       ))}
                     </div>
                   </div>
 
-                  {/* Search Query */}
                   <div>
                     <label className="block text-sm font-medium text-purple-200 mb-2">
                       Search Query
@@ -333,205 +353,147 @@ function AdvancedSearchPageContent() {
                       type="text"
                       value={filters.query}
                       onChange={(e) => handleFilterChange('query', e.target.value)}
-                      placeholder={`Enter ${getCategoryLabel(filters.category).toLowerCase()} name...`}
+                      placeholder={`Enter ${categoryConfig.label.toLowerCase()} name...`}
                       className="w-full px-4 py-3 bg-[#6d28d9]/30 border border-purple-300/40 rounded-lg text-white placeholder-purple-200/60 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400 transition-all duration-200"
                     />
                   </div>
 
-                  {/* Category-specific filters */}
                   {(filters.category === 'anime' || filters.category === 'manga') && (
                     <>
-                      {/* Type Filter */}
                       <div>
-                    <label className="block text-sm font-medium text-purple-200 mb-2">
-                      Type
-                    </label>
-                    <select
-                      value={filters.type}
-                      onChange={(e) => handleFilterChange('type', e.target.value)}
-                      className="w-full px-4 py-3 bg-[#6d28d9]/30 border border-purple-300/40 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400 transition-all duration-200"
-                      style={{
-                        backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='rgb(196 181 253)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e")`,
-                        backgroundRepeat: 'no-repeat',
-                        backgroundPosition: 'right 12px center',
-                        backgroundSize: '16px',
-                        appearance: 'none'
-                      }}
-                    >
-                      {(filters.category === 'anime' ? ANIME_TYPES : MANGA_TYPES).map(type => (
-                        <option key={type.value} value={type.value} className="bg-[#6d28d9] text-white">
-                          {type.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Status Filter */}
-                  <div>
-                    <label className="block text-sm font-medium text-purple-200 mb-2">
-                      Status
-                    </label>
-                    <select
-                      value={filters.status}
-                      onChange={(e) => handleFilterChange('status', e.target.value)}
-                      className="w-full px-4 py-3 bg-[#6d28d9]/30 border border-purple-300/40 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400 transition-all duration-200"
-                      style={{
-                        backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='rgb(196 181 253)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e")`,
-                        backgroundRepeat: 'no-repeat',
-                        backgroundPosition: 'right 12px center',
-                        backgroundSize: '16px',
-                        appearance: 'none'
-                      }}
-                    >
-                      {(filters.category === 'anime' ? ANIME_STATUS : MANGA_STATUS).map(status => (
-                        <option key={status.value} value={status.value} className="bg-[#6d28d9] text-white">
-                          {status.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Rating Filter - Anime only */}
-                  {filters.category === 'anime' && (
-                    <div>
-                    <label className="block text-sm font-medium text-purple-200 mb-2">
-                      Rating
-                    </label>
-                    <select
-                      value={filters.rating}
-                      onChange={(e) => handleFilterChange('rating', e.target.value)}
-                      className="w-full px-4 py-3 bg-[#6d28d9]/30 border border-purple-300/40 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400 transition-all duration-200"
-                      style={{
-                        backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='rgb(196 181 253)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e")`,
-                        backgroundRepeat: 'no-repeat',
-                        backgroundPosition: 'right 12px center',
-                        backgroundSize: '16px',
-                        appearance: 'none'
-                      }}
-                    >
-                      {RATINGS.map(rating => (
-                        <option key={rating.value} value={rating.value} className="bg-[#6d28d9] text-white">
-                          {rating.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  )}
-
-                  {/* Score Range - For anime and manga */}
-                  {(filters.category === 'anime' || filters.category === 'manga') && (
-                  <div>
-                    <label className="block text-sm font-medium text-purple-200 mb-2">
-                      Minimum Score
-                    </label>
-                    <select
-                      value={filters.minScore}
-                      onChange={(e) => handleFilterChange('minScore', parseFloat(e.target.value))}
-                      className="w-full px-4 py-3 bg-[#6d28d9]/30 border border-purple-300/40 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400 transition-all duration-200"
-                      style={{
-                        backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='rgb(196 181 253)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e")`,
-                        backgroundRepeat: 'no-repeat',
-                        backgroundPosition: 'right 12px center',
-                        backgroundSize: '16px',
-                        appearance: 'none'
-                      }}
-                    >
-                      <option value={0} className="bg-[#6d28d9] text-white">Any Score</option>
-                      <option value={1} className="bg-[#6d28d9] text-white">1.0+</option>
-                      <option value={2} className="bg-[#6d28d9] text-white">2.0+</option>
-                      <option value={3} className="bg-[#6d28d9] text-white">3.0+</option>
-                      <option value={4} className="bg-[#6d28d9] text-white">4.0+</option>
-                      <option value={5} className="bg-[#6d28d9] text-white">5.0+</option>
-                      <option value={6} className="bg-[#6d28d9] text-white">6.0+</option>
-                      <option value={7} className="bg-[#6d28d9] text-white">7.0+</option>
-                      <option value={8} className="bg-[#6d28d9] text-white">8.0+</option>
-                      <option value={9} className="bg-[#6d28d9] text-white">9.0+</option>
-                    </select>
-                  </div>
-                  )}
-
-                  {/* Genres - For anime and manga only */}
-                  {(filters.category === 'anime' || filters.category === 'manga') && (
-                    <>
-                      {/* Genres */}
-                  <div>
-                    <label className="block text-sm font-medium text-purple-200 mb-2">
-                      Include Genres (<span className="text-green-400 font-semibold">{filters.genres.length}</span> selected)
-                    </label>
-                    <div className="max-h-40 overflow-y-auto bg-[#6d28d9]/20 border border-purple-300/30 rounded-lg p-3">
-                      <div className="flex flex-wrap gap-1">
-                        {genres.map(genre => (
-                          <button
-                            key={genre.mal_id}
-                            onClick={() => handleGenreToggle(genre.mal_id)}
-                            className={`px-3 py-1.5 text-xs rounded-lg transition-all duration-200 font-medium ${
-                              filters.genres.includes(genre.mal_id)
-                                ? "bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg scale-105"
-                                : "bg-[#6d28d9]/40 text-purple-200 hover:bg-[#6d28d9]/60 hover:text-white border border-purple-300/30"
-                            }`}
-                          >
-                            {genre.name}
-                          </button>
-                        ))}
+                        <label className="block text-sm font-medium text-purple-200 mb-2">Type</label>
+                        <select
+                          value={filters.type}
+                          onChange={(e) => handleFilterChange('type', e.target.value)}
+                          className="w-full px-4 py-3 bg-[#6d28d9]/30 border border-purple-300/40 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400 transition-all duration-200"
+                          style={SELECT_STYLES}
+                        >
+                          {categoryConfig.types?.map((type: TypeOption) => (
+                            <option key={type.value} value={type.value} className="bg-[#6d28d9] text-white">
+                              {type.label}
+                            </option>
+                          ))}
+                        </select>
                       </div>
-                    </div>
-                  </div>
 
-                  {/* Exclude Genres */}
-                  <div>
-                    <label className="block text-sm font-medium text-purple-200 mb-2">
-                      Exclude Genres (<span className="text-red-400 font-semibold">{filters.excludeGenres.length}</span> selected)
-                    </label>
-                    <div className="max-h-40 overflow-y-auto bg-[#6d28d9]/20 border border-purple-300/30 rounded-lg p-3">
-                      <div className="flex flex-wrap gap-1">
-                        {genres.map(genre => (
-                          <button
-                            key={genre.mal_id}
-                            onClick={() => handleGenreToggle(genre.mal_id, true)}
-                            className={`px-3 py-1.5 text-xs rounded-lg transition-all duration-200 font-medium ${
-                              filters.excludeGenres.includes(genre.mal_id)
-                                ? "bg-gradient-to-r from-red-500 to-red-600 text-white shadow-lg scale-105"
-                                : "bg-[#6d28d9]/40 text-purple-200 hover:bg-[#6d28d9]/60 hover:text-white border border-purple-300/30"
-                            }`}
-                          >
-                            {genre.name}
-                          </button>
-                        ))}
+                      <div>
+                        <label className="block text-sm font-medium text-purple-200 mb-2">Status</label>
+                        <select
+                          value={filters.status}
+                          onChange={(e) => handleFilterChange('status', e.target.value)}
+                          className="w-full px-4 py-3 bg-[#6d28d9]/30 border border-purple-300/40 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400 transition-all duration-200"
+                          style={SELECT_STYLES}
+                        >
+                          {categoryConfig.statuses?.map((status: StatusOption) => (
+                            <option key={status.value} value={status.value} className="bg-[#6d28d9] text-white">
+                              {status.label}
+                            </option>
+                          ))}
+                        </select>
                       </div>
-                    </div>
-                  </div>
+
+                      {filters.category === 'anime' && (
+                        <div>
+                          <label className="block text-sm font-medium text-purple-200 mb-2">Rating</label>
+                          <select
+                            value={filters.rating}
+                            onChange={(e) => handleFilterChange('rating', e.target.value)}
+                            className="w-full px-4 py-3 bg-[#6d28d9]/30 border border-purple-300/40 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400 transition-all duration-200"
+                            style={SELECT_STYLES}
+                          >
+                            {RATINGS.map(rating => (
+                              <option key={rating.value} value={rating.value} className="bg-[#6d28d9] text-white">
+                                {rating.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      <div>
+                        <label className="block text-sm font-medium text-purple-200 mb-2">Minimum Score</label>
+                        <select
+                          value={filters.minScore}
+                          onChange={(e) => handleFilterChange('minScore', parseFloat(e.target.value))}
+                          className="w-full px-4 py-3 bg-[#6d28d9]/30 border border-purple-300/40 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400 transition-all duration-200"
+                          style={SELECT_STYLES}
+                        >
+                          {SCORE_OPTIONS.map(option => (
+                            <option key={option.value} value={option.value} className="bg-[#6d28d9] text-white">
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <>
+                        <div>
+                          <label className="block text-sm font-medium text-purple-200 mb-2">
+                            Include Genres (<span className="text-green-400 font-semibold">{filters.genres.length}</span> selected)
+                          </label>
+                          <div className="max-h-40 overflow-y-auto bg-[#6d28d9]/20 border border-purple-300/30 rounded-lg p-3">
+                            <div className="flex flex-wrap gap-1">
+                              {genres.map(genre => (
+                                <button
+                                  key={genre.mal_id}
+                                  onClick={() => handleGenreToggle(genre.mal_id)}
+                                  className={`px-3 py-1.5 text-xs rounded-lg transition-all duration-200 font-medium ${
+                                    filters.genres.includes(genre.mal_id)
+                                      ? "bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg scale-105"
+                                      : "bg-[#6d28d9]/40 text-purple-200 hover:bg-[#6d28d9]/60 hover:text-white border border-purple-300/30"
+                                  }`}
+                                >
+                                  {genre.name}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-purple-200 mb-2">
+                            Exclude Genres (<span className="text-red-400 font-semibold">{filters.excludeGenres.length}</span> selected)
+                          </label>
+                          <div className="max-h-40 overflow-y-auto bg-[#6d28d9]/20 border border-purple-300/30 rounded-lg p-3">
+                            <div className="flex flex-wrap gap-1">
+                              {genres.map(genre => (
+                                <button
+                                  key={genre.mal_id}
+                                  onClick={() => handleGenreToggle(genre.mal_id, true)}
+                                  className={`px-3 py-1.5 text-xs rounded-lg transition-all duration-200 font-medium ${
+                                    filters.excludeGenres.includes(genre.mal_id)
+                                      ? "bg-gradient-to-r from-red-500 to-red-600 text-white shadow-lg scale-105"
+                                      : "bg-[#6d28d9]/40 text-purple-200 hover:bg-[#6d28d9]/60 hover:text-white border border-purple-300/30"
+                                  }`}
+                                >
+                                  {genre.name}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </>
                     </>
                   )}
 
-                  {/* Character/People specific filters */}
                   {(filters.category === 'characters' || filters.category === 'people') && (
                     <div>
-                      <label className="block text-sm font-medium text-purple-200 mb-2">
-                        Minimum Favorites
-                      </label>
+                      <label className="block text-sm font-medium text-purple-200 mb-2">Minimum Favorites</label>
                       <select
                         value={filters.minScore}
                         onChange={(e) => handleFilterChange('minScore', parseFloat(e.target.value))}
                         className="w-full px-4 py-3 bg-[#6d28d9]/30 border border-purple-300/40 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400 transition-all duration-200"
-                        style={{
-                          backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='rgb(196 181 253)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e")`,
-                          backgroundRepeat: 'no-repeat',
-                          backgroundPosition: 'right 12px center',
-                          backgroundSize: '16px',
-                          appearance: 'none'
-                        }}
+                        style={SELECT_STYLES}
                       >
-                        <option value={0} className="bg-[#6d28d9] text-white">Any Amount</option>
-                        <option value={100} className="bg-[#6d28d9] text-white">100+</option>
-                        <option value={500} className="bg-[#6d28d9] text-white">500+</option>
-                        <option value={1000} className="bg-[#6d28d9] text-white">1,000+</option>
-                        <option value={5000} className="bg-[#6d28d9] text-white">5,000+</option>
-                        <option value={10000} className="bg-[#6d28d9] text-white">10,000+</option>
+                        {FAVORITES_OPTIONS.map(option => (
+                          <option key={option.value} value={option.value} className="bg-[#6d28d9] text-white">
+                            {option.label}
+                          </option>
+                        ))}
                       </select>
                     </div>
                   )}
 
-                  {/* Sort Options */}
                   <div>
                     <label className="block text-sm font-medium text-purple-200 mb-2">
                       <div className="inline-flex items-center">
@@ -546,48 +508,26 @@ function AdvancedSearchPageContent() {
                         value={filters.orderBy}
                         onChange={(e) => handleFilterChange('orderBy', e.target.value)}
                         className="w-32 px-3 py-3 bg-[#6d28d9]/30 border border-purple-300/40 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400 transition-all duration-200"
-                        style={{
-                          backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='rgb(196 181 253)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e")`,
-                          backgroundRepeat: 'no-repeat',
-                          backgroundPosition: 'right 12px center',
-                          backgroundSize: '16px',
-                          appearance: 'none'
-                        }}
+                        style={SELECT_STYLES}
                       >
-                        {(() => {
-                          const options = filters.category === 'anime' ? ANIME_ORDER_BY_OPTIONS :
-                                         filters.category === 'manga' ? MANGA_ORDER_BY_OPTIONS :
-                                         filters.category === 'people' ? PEOPLE_ORDER_BY_OPTIONS :
-                                         CHARACTER_ORDER_BY_OPTIONS;
-                          return options.map(option => (
-                            <option key={option.value} value={option.value} className="bg-[#6d28d9] text-white">
-                              {option.label}
-                            </option>
-                          ));
-                        })()}
+                        {categoryConfig.orderByOptions.map(option => (
+                          <option key={option.value} value={option.value} className="bg-[#6d28d9] text-white">
+                            {option.label}
+                          </option>
+                        ))}
                       </select>
                       <select
                         value={filters.sort}
                         onChange={(e) => handleFilterChange('sort', e.target.value as 'asc' | 'desc')}
                         className="flex-1 px-4 py-3 bg-[#6d28d9]/30 border border-purple-300/40 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400 transition-all duration-200 min-h-[48px]"
-                        style={{
-                          backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='rgb(196 181 253)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e")`,
-                          backgroundRepeat: 'no-repeat',
-                          backgroundPosition: 'right 12px center',
-                          backgroundSize: '16px',
-                          appearance: 'none',
-                          lineHeight: '1.2'
-                        }}
+                        style={{...SELECT_STYLES, lineHeight: '1.2'}}
                       >
                         <option value="desc" className="bg-[#6d28d9] text-white py-2">Descending</option>
                         <option value="asc" className="bg-[#6d28d9] text-white py-2">Ascending</option>
                       </select>
                     </div>
                   </div>
-                    </>
-                  )}
 
-                  {/* Clear Filters */}
                   <button
                     onClick={clearFilters}
                     className="w-full px-4 py-3 bg-gradient-to-r from-red-500/80 to-red-600/80 hover:from-red-500 hover:to-red-600 text-white rounded-lg transition-all duration-200 font-medium shadow-lg hover:shadow-xl"
@@ -599,13 +539,12 @@ function AdvancedSearchPageContent() {
             </div>
           </div>
 
-          {/* Results */}
           <div className="flex-1">
             {loading ? (
               <div className="flex justify-center items-center py-12">
                 <div className="text-center">
                   <div className="animate-spin rounded-full h-10 w-10 border-b-3 border-purple-500 mx-auto mb-4"></div>
-                  <p className="text-purple-200">Searching {getCategoryLabel(filters.category).toLowerCase()}...</p>
+                  <p className="text-purple-200">Searching {categoryConfig.label.toLowerCase()}...</p>
                 </div>
               </div>
             ) : error ? (
@@ -642,12 +581,7 @@ function AdvancedSearchPageContent() {
                         {'status' in anime && (
                           <div className="absolute top-2 right-2">
                             <span className={`px-2 py-1 text-xs font-semibold text-white rounded-md shadow-lg ${
-                              (filters.category === 'anime' && anime.status === "Airing Now") ? "bg-green-500" :
-                              (filters.category === 'anime' && anime.status === "Scheduled") ? "bg-blue-500" :
-                              (filters.category === 'anime' && anime.status === "Movie") ? "bg-purple-500" :
-                              (filters.category === 'manga' && anime.status === "Publishing") ? "bg-green-500" :
-                              (filters.category === 'manga' && anime.status === "Finished") ? "bg-blue-500" :
-                              "bg-gray-500"
+                              STATUS_COLORS[anime.status as keyof typeof STATUS_COLORS] || "bg-gray-500"
                             }`}>
                               {anime.status}
                             </span>

@@ -1,16 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { db } from "~/server/db";
 import { favorites } from "~/server/db/schema";
 import { eq, and, count } from "drizzle-orm";
+import { requireDatabase } from "~/lib/api-utils";
 
 export async function GET(request: NextRequest) {
   try {
-    if (!db) {
-      return NextResponse.json({ error: "Database not available" }, { status: 503 });
-    }
-
     const { userId } = await auth();
+    const database = requireDatabase();
     
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -19,10 +16,10 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const type = searchParams.get("type");
 
-    let query = db.select().from(favorites).where(eq(favorites.userId, userId));
+    let query = database.select().from(favorites).where(eq(favorites.userId, userId));
     
     if (type) {
-      query = db.select().from(favorites).where(
+      query = database.select().from(favorites).where(
         and(eq(favorites.userId, userId), eq(favorites.type, type))
       );
     }
@@ -41,11 +38,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    if (!db) {
-      return NextResponse.json({ error: "Database not available" }, { status: 503 });
-    }
-
     const { userId } = await auth();
+    const database = requireDatabase();
     
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -71,7 +65,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user already has this item as favorite
-    const existing = await db
+    const existing = await database
       .select()
       .from(favorites)
       .where(and(
@@ -86,7 +80,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user already has 5 favorites of this type
-    const favoriteCount = await db
+    const favoriteCount = await database
       .select({ count: count() })
       .from(favorites)
       .where(and(eq(favorites.userId, userId), eq(favorites.type, type)));
@@ -100,7 +94,7 @@ export async function POST(request: NextRequest) {
 
     const favoriteId = `${userId}_${type}_${itemId}`;
 
-    const result = await db
+    const result = await database
       .insert(favorites)
       .values({
         id: favoriteId,
@@ -125,11 +119,8 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    if (!db) {
-      return NextResponse.json({ error: "Database not available" }, { status: 503 });
-    }
-
     const { userId } = await auth();
+    const database = requireDatabase();
     
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -143,7 +134,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Type and itemId required" }, { status: 400 });
     }
 
-    const result = await db
+    const result = await database
       .delete(favorites)
       .where(and(
         eq(favorites.userId, userId),

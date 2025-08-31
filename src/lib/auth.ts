@@ -4,6 +4,10 @@ import { db } from "~/server/db";
 import * as schema from "~/server/db/schema";
 import { env } from "~/env";
 
+if (!db) {
+  throw new Error("Database connection not available");
+}
+
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
     provider: "pg",
@@ -22,7 +26,7 @@ export const auth = betterAuth({
     expiresIn: 60 * 60 * 24 * 7,
     updateAge: 60 * 60 * 24,
   },
-  secret: env.BETTER_AUTH_SECRET,
+  secret: env.BETTER_AUTH_SECRET || "dev-secret-key",
   baseURL: env.BETTER_AUTH_URL,
   trustedOrigins: [env.BETTER_AUTH_URL],
   advanced: {

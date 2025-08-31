@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { FaStar, FaHeart, FaCalendarAlt, FaBook, FaArrowLeft } from "react-icons/fa";
-import { jikanAPI, type MangaItem } from "~/utils/api";
+import { type MangaItem } from "~/utils/api";
 
 interface DetailedMangaItem extends MangaItem {
   titleJapanese: string | null;
@@ -70,8 +70,8 @@ export default function MangaDetailPage() {
           status: mangaData.publishing ? 'Publishing' : 
                   mangaData.status === 'Not yet published' ? 'Not yet published' :
                   mangaData.status === 'Discontinued' ? 'Discontinued' : 'Finished',
-          favorites: mangaData.favorites || 0,
-          rating: mangaData.score || 0,
+          favorites: mangaData.favorites ?? 0,
+          rating: mangaData.score ?? 0,
           chapters: mangaData.chapters,
           volumes: mangaData.volumes,
           type: mangaData.type,

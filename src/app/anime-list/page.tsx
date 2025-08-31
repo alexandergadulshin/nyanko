@@ -33,15 +33,36 @@ interface SearchAnime {
 
 type StatusFilter = "all" | "planning" | "watching" | "completed" | "dropped" | "paused";
 
-// Memoized AnimeListItem component
+const statusPriorityMap = {
+  planning: 1,
+  watching: 2,
+  completed: 3,
+  paused: 4,
+  dropped: 5
+} as const;
+
+const statusColorMap = {
+  watching: "bg-blue-500",
+  completed: "bg-green-500",
+  planning: "bg-gray-500",
+  paused: "bg-yellow-500",
+  dropped: "bg-red-500"
+} as const;
+
+const statusTextMap = {
+  watching: "Watching",
+  completed: "Completed",
+  planning: "Plan to Watch",
+  paused: "On Hold",
+  dropped: "Dropped"
+} as const;
+
 const AnimeListItemComponent = React.memo(({ 
   anime, 
   onIncrement, 
   onDecrement, 
   onEdit, 
   onRemove, 
-  getStatusColor, 
-  getStatusText, 
   isUpdating 
 }: {
   anime: AnimeListItem;
@@ -49,13 +70,10 @@ const AnimeListItemComponent = React.memo(({
   onDecrement: (anime: AnimeListItem) => void;
   onEdit: (anime: AnimeListItem) => void;
   onRemove: (animeId: number) => void;
-  getStatusColor: (status: string) => string;
-  getStatusText: (status: string) => string;
   isUpdating: boolean;
 }) => (
   <div className="group px-4 py-3 hover:bg-gray-700/20 transition-all duration-200">
     <div className="flex items-center space-x-3">
-      {/* Anime Image & Status */}
       <div className="relative flex-shrink-0">
         <img
           src={anime.animeImage}
@@ -65,27 +83,22 @@ const AnimeListItemComponent = React.memo(({
             e.currentTarget.src = `https://via.placeholder.com/48x64/4f356b/ffffff?text=?`;
           }}
         />
-        {/* Status Dot */}
-        <div className={`absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border border-gray-800 ${getStatusColor(anime.status)}`}></div>
+        <div className={`absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border border-gray-800 ${statusColorMap[anime.status] || "bg-gray-500"}`}></div>
       </div>
 
-      {/* Content */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between">
           <div className="flex-1 min-w-0 mr-3">
-            {/* Title & Status on same line */}
             <div className="flex items-center space-x-2 mb-1">
               <h3 className="font-medium text-white group-hover:text-purple-200 transition-colors truncate">
                 {anime.animeTitle}
               </h3>
-              <span className={`px-1.5 py-0.5 rounded text-white text-xs font-medium ${getStatusColor(anime.status)}`}>
-                {getStatusText(anime.status)}
+              <span className={`px-1.5 py-0.5 rounded text-white text-xs font-medium ${statusColorMap[anime.status] || "bg-gray-500"}`}>
+                {statusTextMap[anime.status] || "Unknown"}
               </span>
             </div>
             
-            {/* Episodes, Score, and Notes on one line */}
             <div className="flex items-center space-x-3 text-sm">
-              {/* Episode Controls */}
               <div className="flex items-center space-x-1.5">
                 <span className="text-gray-400 text-xs">Ep:</span>
                 <div className={`flex items-center space-x-1 bg-gray-700/40 rounded px-2 py-0.5 transition-all duration-200 ${isUpdating ? 'bg-purple-500/20' : ''}`}>
@@ -111,7 +124,6 @@ const AnimeListItemComponent = React.memo(({
                 </div>
               </div>
 
-              {/* Score */}
               {anime.score && (
                 <div className="flex items-center space-x-0.5 bg-yellow-500/15 px-1.5 py-0.5 rounded">
                   <span className="text-yellow-400 text-xs">★</span>
@@ -119,7 +131,6 @@ const AnimeListItemComponent = React.memo(({
                 </div>
               )}
 
-              {/* Notes Preview */}
               {anime.notes && (
                 <span className="text-gray-400 text-xs truncate max-w-xs">
                   &ldquo;{anime.notes}&rdquo;
@@ -128,7 +139,6 @@ const AnimeListItemComponent = React.memo(({
             </div>
           </div>
           
-          {/* Action Buttons */}
           <div className="flex items-center space-x-0.5">
             <button
               onClick={() => onEdit(anime)}
@@ -160,13 +170,11 @@ export default function AnimeListPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  // Search and add functionality
   const [showAddModal, setShowAddModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchAnime[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   
-  // Filter and edit functionality
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [editingItem, setEditingItem] = useState<AnimeListItem | null>(null);
   const [editForm, setEditForm] = useState({
@@ -178,9 +186,11 @@ export default function AnimeListPage() {
   const [updatingEpisodes, setUpdatingEpisodes] = useState<Set<string>>(new Set());
 
   const fetchAnimeList = useCallback(async () => {
+    if (!user?.id) return;
+    
     try {
       setLoading(true);
-      const response = await fetch(`/api/profile/${user?.id}`);
+      const response = await fetch(`/api/profile/${user.id}`);
       
       if (!response.ok) {
         throw new Error("Failed to fetch anime list");
@@ -198,7 +208,7 @@ export default function AnimeListPage() {
 
   useEffect(() => {
     if (isLoaded && user?.id) {
-      void fetchAnimeList();
+      fetchAnimeList().catch(console.error);
     }
   }, [user?.id, isLoaded, fetchAnimeList]);
 
@@ -211,7 +221,7 @@ export default function AnimeListPage() {
     setSearchLoading(true);
     try {
       const results = await jikanAPI.searchAnime(searchQuery);
-      setSearchResults(results.slice(0, 10)); // Limit to 10 results
+      setSearchResults(results.slice(0, 10));
     } catch (err) {
       console.error("Error searching anime:", err);
       setSearchResults([]);
@@ -220,11 +230,10 @@ export default function AnimeListPage() {
     }
   }, [searchQuery]);
 
-  // Auto-search as user types with debounce
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       if (searchQuery.trim()) {
-        searchForAnime();
+        searchForAnime().catch(console.error);
       } else {
         setSearchResults([]);
         setSearchLoading(false);
@@ -236,14 +245,11 @@ export default function AnimeListPage() {
 
   const addAnimeToList = async (anime: SearchAnime, status: AnimeListItem["status"]) => {
     try {
-      // If status is completed, set episodes watched to max episodes (or 1 if unknown)
       const episodesWatched = status === "completed" ? (anime.episodes ?? 1) : 0;
 
       const response = await fetch("/api/anime-list", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           animeId: anime.malId,
           animeTitle: anime.title,
@@ -260,7 +266,6 @@ export default function AnimeListPage() {
         throw new Error("Failed to add anime to list");
       }
 
-      // Refresh the list
       await fetchAnimeList();
       setShowAddModal(false);
       setSearchQuery("");
@@ -277,9 +282,7 @@ export default function AnimeListPage() {
     try {
       const response = await fetch("/api/anime-list", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           animeId: editingItem.animeId,
           animeTitle: editingItem.animeTitle,
@@ -296,7 +299,6 @@ export default function AnimeListPage() {
         throw new Error("Failed to update anime entry");
       }
 
-      // Refresh the list
       await fetchAnimeList();
       setEditingItem(null);
     } catch (err) {
@@ -315,7 +317,6 @@ export default function AnimeListPage() {
         throw new Error("Failed to remove anime from list");
       }
 
-      // Refresh the list
       await fetchAnimeList();
     } catch (err) {
       console.error("Error removing anime:", err);
@@ -323,27 +324,32 @@ export default function AnimeListPage() {
     }
   };
 
-  const incrementEpisode = async (anime: AnimeListItem) => {
-    if (anime.totalEpisodes && anime.episodesWatched >= anime.totalEpisodes) {
-      return; // Already at max episodes
+  const updateEpisodeCount = useCallback(async (anime: AnimeListItem, increment: boolean) => {
+    const currentCount = anime.episodesWatched;
+    const newEpisodeCount = increment ? currentCount + 1 : currentCount - 1;
+    
+    if (newEpisodeCount < 0 || (anime.totalEpisodes && increment && currentCount >= anime.totalEpisodes)) {
+      return;
     }
 
-    const newEpisodeCount = anime.episodesWatched + 1;
     let newStatus = anime.status;
     
-    // If completed, keep as completed
-    if (anime.totalEpisodes && newEpisodeCount >= anime.totalEpisodes) {
-      newStatus = "completed";
-    }
-    // If planning and adding first episode, move to watching
-    else if (anime.status === "planning" && newEpisodeCount === 1) {
-      newStatus = "watching";
+    if (increment) {
+      if (anime.totalEpisodes && newEpisodeCount >= anime.totalEpisodes) {
+        newStatus = "completed";
+      } else if (anime.status === "planning" && newEpisodeCount === 1) {
+        newStatus = "watching";
+      }
+    } else {
+      if (anime.status === "watching" && newEpisodeCount === 0) {
+        newStatus = "planning";
+      } else if (anime.status === "completed" && anime.totalEpisodes && newEpisodeCount < anime.totalEpisodes) {
+        newStatus = "watching";
+      }
     }
 
-    // Add visual feedback
     setUpdatingEpisodes(prev => new Set(prev).add(anime.id));
 
-    // Optimistically update the local state immediately
     setAnimeList(prevList => 
       prevList.map(item => 
         item.id === anime.id 
@@ -355,9 +361,7 @@ export default function AnimeListPage() {
     try {
       const response = await fetch("/api/anime-list", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           animeId: anime.animeId,
           animeTitle: anime.animeTitle,
@@ -371,7 +375,6 @@ export default function AnimeListPage() {
       });
 
       if (!response.ok) {
-        // Revert the optimistic update on error
         setAnimeList(prevList => 
           prevList.map(item => 
             item.id === anime.id 
@@ -385,87 +388,18 @@ export default function AnimeListPage() {
       console.error("Error updating episode count:", err);
       setError("Failed to update episode count");
     } finally {
-      // Remove visual feedback
       setUpdatingEpisodes(prev => {
         const newSet = new Set(prev);
         newSet.delete(anime.id);
         return newSet;
       });
     }
-  };
+  }, []);
 
-  const decrementEpisode = async (anime: AnimeListItem) => {
-    if (anime.episodesWatched <= 0) {
-      return; // Already at 0 episodes
-    }
+  const incrementEpisode = useCallback((anime: AnimeListItem) => updateEpisodeCount(anime, true), [updateEpisodeCount]);
+  const decrementEpisode = useCallback((anime: AnimeListItem) => updateEpisodeCount(anime, false), [updateEpisodeCount]);
 
-    const newEpisodeCount = anime.episodesWatched - 1;
-    let newStatus = anime.status;
-    
-    // If going back to 0 episodes from watching, move to planning
-    if (anime.status === "watching" && newEpisodeCount === 0) {
-      newStatus = "planning";
-    }
-    // If completed and going below total episodes, move to watching
-    else if (anime.status === "completed" && anime.totalEpisodes && newEpisodeCount < anime.totalEpisodes) {
-      newStatus = "watching";
-    }
-
-    // Add visual feedback
-    setUpdatingEpisodes(prev => new Set(prev).add(anime.id));
-
-    // Optimistically update the local state immediately
-    setAnimeList(prevList => 
-      prevList.map(item => 
-        item.id === anime.id 
-          ? { ...item, episodesWatched: newEpisodeCount, status: newStatus }
-          : item
-      )
-    );
-
-    try {
-      const response = await fetch("/api/anime-list", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          animeId: anime.animeId,
-          animeTitle: anime.animeTitle,
-          animeImage: anime.animeImage,
-          status: newStatus,
-          score: anime.score,
-          episodesWatched: newEpisodeCount,
-          totalEpisodes: anime.totalEpisodes,
-          notes: anime.notes
-        })
-      });
-
-      if (!response.ok) {
-        // Revert the optimistic update on error
-        setAnimeList(prevList => 
-          prevList.map(item => 
-            item.id === anime.id 
-              ? { ...item, episodesWatched: anime.episodesWatched, status: anime.status }
-              : item
-          )
-        );
-        throw new Error("Failed to update episode count");
-      }
-    } catch (err) {
-      console.error("Error updating episode count:", err);
-      setError("Failed to update episode count");
-    } finally {
-      // Remove visual feedback
-      setUpdatingEpisodes(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(anime.id);
-        return newSet;
-      });
-    }
-  };
-
-  const startEdit = (item: AnimeListItem) => {
+  const startEdit = useCallback((item: AnimeListItem) => {
     setEditingItem(item);
     setEditForm({
       status: item.status,
@@ -473,54 +407,34 @@ export default function AnimeListPage() {
       episodesWatched: item.episodesWatched,
       notes: item.notes ?? ""
     });
-  };
-
-  const statusPriority = useMemo(() => ({
-    "planning": 1,
-    "watching": 2,
-    "completed": 3,
-    "paused": 4,
-    "dropped": 5
-  }), []);
+  }, []);
 
   const filteredAnimeList = useMemo(() => {
     return animeList
       .filter(anime => statusFilter === "all" || anime.status === statusFilter)
       .sort((a, b) => {
-        const priorityA = statusPriority[a.status] || 6;
-        const priorityB = statusPriority[b.status] || 6;
+        const priorityA = statusPriorityMap[a.status] || 6;
+        const priorityB = statusPriorityMap[b.status] || 6;
         
-        // Sort by priority first
         if (priorityA !== priorityB) {
           return priorityA - priorityB;
         }
         
-        // If same status, sort alphabetically by title for all statuses
         return a.animeTitle.localeCompare(b.animeTitle);
       });
-  }, [animeList, statusFilter, statusPriority]);
+  }, [animeList, statusFilter]);
 
-  const getStatusColor = useCallback((status: string) => {
-    switch (status) {
-      case "watching": return "bg-blue-500";
-      case "completed": return "bg-green-500";
-      case "planning": return "bg-gray-500";
-      case "paused": return "bg-yellow-500";
-      case "dropped": return "bg-red-500";
-      default: return "bg-gray-500";
-    }
-  }, []);
+  const animeListStats = useMemo(() => {
+    const statusCounts = animeList.reduce((acc, anime) => {
+      acc[anime.status] = (acc[anime.status] ?? 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
 
-  const getStatusText = useCallback((status: string) => {
-    switch (status) {
-      case "watching": return "Watching";
-      case "completed": return "Completed";
-      case "planning": return "Plan to Watch";
-      case "paused": return "On Hold";
-      case "dropped": return "Dropped";
-      default: return "Unknown";
-    }
-  }, []);
+    const totalWatchDays = Math.round(animeList.reduce((sum, anime) => 
+      sum + (anime.episodesWatched * 24), 0) / 60 / 24 * 10) / 10;
+
+    return { statusCounts, totalWatchDays };
+  }, [animeList]);
 
   if (!isLoaded || loading) {
     return (
@@ -551,10 +465,8 @@ export default function AnimeListPage() {
 
   return (
     <div className="min-h-screen bg-[#181622] light:bg-transparent">
-      {/* Background */}
       <div className="absolute inset-0 bg-gradient-to-br from-purple-900/5 via-transparent to-pink-900/5"></div>
       
-      {/* Header */}
       <header className="backdrop-blur-md bg-gradient-to-r from-[#6d28d9]/80 to-[#6b4f75]/80 border-b border-purple-300/20 sticky top-0 z-50 shadow-xl">
         <div className="container mx-auto px-4 py-6">
           <div className="flex items-center justify-between">
@@ -584,7 +496,6 @@ export default function AnimeListPage() {
       </header>
 
       <div className="container mx-auto px-4 py-6 relative z-10">
-        {/* Filters & Stats */}
         <div className="bg-gradient-to-r from-gray-800/60 to-gray-700/60 backdrop-blur-sm rounded-2xl p-6 border border-gray-700/30 mb-8 shadow-lg">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-center space-x-4">
@@ -601,13 +512,12 @@ export default function AnimeListPage() {
                   className="appearance-none bg-gradient-to-r from-gray-900/80 to-gray-800/80 border border-gray-600/50 rounded-xl px-4 py-3 pr-10 text-white font-medium focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-400/50 transition-all duration-200 shadow-lg hover:shadow-xl hover:border-purple-400/70 cursor-pointer min-w-[200px]"
                 >
                   <option value="all" className="bg-gray-800 text-white">All Anime ({animeList.length})</option>
-                  <option value="planning" className="bg-gray-800 text-white">Plan to Watch ({animeList.filter(a => a.status === "planning").length})</option>
-                  <option value="watching" className="bg-gray-800 text-white">Watching ({animeList.filter(a => a.status === "watching").length})</option>
-                  <option value="completed" className="bg-gray-800 text-white">Completed ({animeList.filter(a => a.status === "completed").length})</option>
-                  <option value="paused" className="bg-gray-800 text-white">On Hold ({animeList.filter(a => a.status === "paused").length})</option>
-                  <option value="dropped" className="bg-gray-800 text-white">Dropped ({animeList.filter(a => a.status === "dropped").length})</option>
+                  <option value="planning" className="bg-gray-800 text-white">Plan to Watch ({animeListStats.statusCounts.planning ?? 0})</option>
+                  <option value="watching" className="bg-gray-800 text-white">Watching ({animeListStats.statusCounts.watching ?? 0})</option>
+                  <option value="completed" className="bg-gray-800 text-white">Completed ({animeListStats.statusCounts.completed ?? 0})</option>
+                  <option value="paused" className="bg-gray-800 text-white">On Hold ({animeListStats.statusCounts.paused ?? 0})</option>
+                  <option value="dropped" className="bg-gray-800 text-white">Dropped ({animeListStats.statusCounts.dropped ?? 0})</option>
                 </select>
-                {/* Custom dropdown arrow */}
                 <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
                   <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -621,13 +531,12 @@ export default function AnimeListPage() {
               </div>
               <div className="h-6 w-px bg-gray-600"></div>
               <div className="text-sm text-gray-400">
-                <span className="text-green-300 font-semibold">{Math.round(animeList.reduce((sum, anime) => sum + (anime.episodesWatched * 24), 0) / 60 / 24 * 10) / 10}</span> days watched
+                <span className="text-green-300 font-semibold">{animeListStats.totalWatchDays}</span> days watched
               </div>
             </div>
           </div>
         </div>
 
-        {/* Anime List */}
         <div className="bg-gray-800/60 backdrop-blur-sm rounded-xl border border-gray-700/30 overflow-hidden shadow-lg">
           {filteredAnimeList.length > 0 ? (
             <div className="divide-y divide-gray-700/20">
@@ -639,8 +548,6 @@ export default function AnimeListPage() {
                   onDecrement={decrementEpisode}
                   onEdit={startEdit}
                   onRemove={removeAnimeFromList}
-                  getStatusColor={getStatusColor}
-                  getStatusText={getStatusText}
                   isUpdating={updatingEpisodes.has(anime.id)}
                 />
               ))}
@@ -672,7 +579,7 @@ export default function AnimeListPage() {
                 <div className="space-y-4">
                   <div className="text-4xl mb-4">🔍</div>
                   <h3 className="text-lg font-semibold text-white mb-2">No anime found</h3>
-                  <p className="text-gray-400">No anime with status: <span className="text-purple-300 font-medium">{getStatusText(statusFilter)}</span></p>
+                  <p className="text-gray-400">No anime with status: <span className="text-purple-300 font-medium">{statusFilter in statusTextMap ? statusTextMap[statusFilter] : statusFilter}</span></p>
                 </div>
               )}
             </div>
@@ -680,7 +587,6 @@ export default function AnimeListPage() {
         </div>
       </div>
 
-      {/* Add Anime Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-gray-800 rounded-xl w-full max-w-2xl max-h-[90vh] overflow-visible">
@@ -697,7 +603,6 @@ export default function AnimeListPage() {
             </div>
             
             <div className="p-6">
-              {/* Search */}
               <div className="relative">
                 <div className="flex space-x-2 mb-4">
                   <input
@@ -717,7 +622,6 @@ export default function AnimeListPage() {
                   </button>
                 </div>
 
-                {/* Live Search Results */}
                 {(searchLoading || searchResults.length > 0) && searchQuery.trim() && (
                   <div className="absolute top-full left-0 right-0 mt-1 bg-gray-800/95 backdrop-blur-md border border-gray-600/50 rounded-lg shadow-2xl z-[60] max-h-80 overflow-y-auto">
                     {searchLoading && (
@@ -748,39 +652,24 @@ export default function AnimeListPage() {
                               </p>
                             </div>
                             <div className="flex space-x-1">
-                              <button
-                                onClick={() => {
-                                  addAnimeToList(anime, "planning");
-                                  setSearchQuery("");
-                                  setSearchResults([]);
-                                }}
-                                className="px-2 py-1 bg-gray-500 hover:bg-gray-400 text-white text-xs rounded transition-colors"
-                                title="Add to Plan to Watch"
-                              >
-                                Plan
-                              </button>
-                              <button
-                                onClick={() => {
-                                  addAnimeToList(anime, "watching");
-                                  setSearchQuery("");
-                                  setSearchResults([]);
-                                }}
-                                className="px-2 py-1 bg-blue-500 hover:bg-blue-400 text-white text-xs rounded transition-colors"
-                                title="Add to Watching"
-                              >
-                                Watch
-                              </button>
-                              <button
-                                onClick={() => {
-                                  addAnimeToList(anime, "completed");
-                                  setSearchQuery("");
-                                  setSearchResults([]);
-                                }}
-                                className="px-2 py-1 bg-green-500 hover:bg-green-400 text-white text-xs rounded transition-colors"
-                                title="Add as Completed"
-                              >
-                                Done
-                              </button>
+                              {[
+                                { status: "planning", label: "Plan", color: "bg-gray-500" },
+                                { status: "watching", label: "Watch", color: "bg-blue-500" },
+                                { status: "completed", label: "Done", color: "bg-green-500" }
+                              ].map(({ status, label, color }) => (
+                                <button
+                                  key={status}
+                                  onClick={() => {
+                                    addAnimeToList(anime, status as AnimeListItem["status"]).catch(console.error);
+                                    setSearchQuery("");
+                                    setSearchResults([]);
+                                  }}
+                                  className={`px-2 py-1 ${color} hover:opacity-80 text-white text-xs rounded transition-colors`}
+                                  title={`Add to ${label}`}
+                                >
+                                  {label}
+                                </button>
+                              ))}
                             </div>
                           </div>
                         ))}
@@ -800,7 +689,6 @@ export default function AnimeListPage() {
         </div>
       )}
 
-      {/* Edit Modal */}
       {editingItem && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-gray-800 rounded-xl w-full max-w-md">
@@ -841,11 +729,7 @@ export default function AnimeListPage() {
                   value={editForm.episodesWatched === 0 ? "" : editForm.episodesWatched}
                   onChange={(e) => {
                     const value = e.target.value;
-                    if (value === "") {
-                      setEditForm(prev => ({ ...prev, episodesWatched: 0 }));
-                    } else {
-                      setEditForm(prev => ({ ...prev, episodesWatched: parseInt(value) ?? 0 }));
-                    }
+                    setEditForm(prev => ({ ...prev, episodesWatched: value === "" ? 0 : parseInt(value) ?? 0 }));
                   }}
                   placeholder="0"
                   className="w-full px-3 py-2 bg-gray-900/40 border border-gray-600/40 rounded text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-purple-500"
@@ -861,11 +745,7 @@ export default function AnimeListPage() {
                   value={editForm.score === 0 ? "" : editForm.score}
                   onChange={(e) => {
                     const value = e.target.value;
-                    if (value === "") {
-                      setEditForm(prev => ({ ...prev, score: 0 }));
-                    } else {
-                      setEditForm(prev => ({ ...prev, score: parseInt(value) ?? 0 }));
-                    }
+                    setEditForm(prev => ({ ...prev, score: value === "" ? 0 : parseInt(value) ?? 0 }));
                   }}
                   placeholder="No score"
                   className="w-full px-3 py-2 bg-gray-900/40 border border-gray-600/40 rounded text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-purple-500"
@@ -902,7 +782,6 @@ export default function AnimeListPage() {
         </div>
       )}
 
-      {/* Error Display */}
       {error && (
         <div className="fixed top-4 right-4 bg-red-600 text-white px-4 py-2 rounded-lg z-50">
           {error}

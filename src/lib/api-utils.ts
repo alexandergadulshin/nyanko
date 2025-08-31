@@ -1,5 +1,38 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { auth } from "~/lib/auth";
+import { auth } from "@clerk/nextjs/server";
+import { db } from "~/server/db";
+
+export const HTTP_STATUS = {
+  OK: 200,
+  CREATED: 201,
+  NO_CONTENT: 204,
+  BAD_REQUEST: 400,
+  UNAUTHORIZED: 401,
+  FORBIDDEN: 403,
+  NOT_FOUND: 404,
+  CONFLICT: 409,
+  UNPROCESSABLE_ENTITY: 422,
+  TOO_MANY_REQUESTS: 429,
+  INTERNAL_SERVER_ERROR: 500,
+} as const;
+
+export const ERROR_MESSAGES = {
+  UNAUTHORIZED: "Unauthorized",
+  FORBIDDEN: "Forbidden",
+  NOT_FOUND: "Resource not found",
+  BAD_REQUEST: "Bad request",
+  INTERNAL_ERROR: "Internal server error",
+  VALIDATION_ERROR: "Validation failed",
+  CONFLICT: "Resource already exists",
+  TOO_MANY_REQUESTS: "Too many requests",
+  MISSING_REQUIRED_FIELDS: "Missing required fields",
+  USER_NOT_FOUND: "User not found",
+  ANIME_NOT_FOUND: "Anime not found in list",
+  USERNAME_TAKEN: "Username is already taken",
+  INVALID_REQUEST_BODY: "Invalid request body",
+  FAILED_TO_UPDATE: "Failed to update resource",
+  FAILED_TO_CREATE: "Failed to create resource",
+} as const;
 
 export interface ApiError {
   message: string;
@@ -59,20 +92,19 @@ export function createErrorResponse(error: ApiException | Error, statusCode?: nu
   );
 }
 
-// Authentication middleware
-export async function requireAuth(request: NextRequest) {
-  try {
-    const session = await auth.api.getSession({ headers: request.headers });
-    
-    if (!session?.user?.id) {
-      throw ApiErrors.UNAUTHORIZED;
-    }
-    
-    return session;
-  } catch (error) {
-    console.error("Authentication error:", error);
+export async function requireAuth() {
+  const { userId } = await auth();
+  if (!userId) {
     throw ApiErrors.UNAUTHORIZED;
   }
+  return userId;
+}
+
+export function requireDatabase() {
+  if (!db) {
+    throw createApiError("Database not available", 503, "DATABASE_UNAVAILABLE");
+  }
+  return db;
 }
 
 // Request body validation

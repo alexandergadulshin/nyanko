@@ -1,19 +1,20 @@
 import { NextResponse } from "next/server";
-import { db } from "~/server/db";
 import { user, animeList, favorites } from "~/server/db/schema";
 import { eq } from "drizzle-orm";
 import { auth } from "@clerk/nextjs/server";
+import { requireDatabase } from "~/lib/api-utils";
 
 export async function GET() {
   try {
     const { userId } = await auth();
+    const database = requireDatabase();
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     // Get user data
-    const userData = await db.query.user.findFirst({
+    const userData = await database.query.user.findFirst({
       where: eq(user.id, userId),
       columns: {
         id: true,
@@ -26,12 +27,12 @@ export async function GET() {
     });
 
     // Get anime list
-    const userAnimeList = await db.query.animeList.findMany({
+    const userAnimeList = await database.query.animeList.findMany({
       where: eq(animeList.userId, userId),
     });
 
     // Get favorites
-    const userFavorites = await db.query.favorites.findMany({
+    const userFavorites = await database.query.favorites.findMany({
       where: eq(favorites.userId, userId),
     });
 

@@ -145,7 +145,7 @@ class EnhancedAPIService {
         name: characterData.name,
         description: characterData.about || "No description available.",
         image: characterData.images?.jpg?.image_url || "",
-        favorites: characterData.favorites || 0,
+        favorites: characterData.favorites ?? 0,
         about: characterData.about,
       };
 
@@ -212,7 +212,7 @@ class EnhancedAPIService {
         name: personData.name,
         description: personData.about || "No description available.",
         image: personData.images?.jpg?.image_url || "",
-        favorites: personData.favorites || 0,
+        favorites: personData.favorites ?? 0,
         about: personData.about,
       };
 

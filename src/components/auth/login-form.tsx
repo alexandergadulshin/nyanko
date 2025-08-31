@@ -51,7 +51,7 @@ export function LoginForm() {
         
         if (result?.error) {
           console.error("Login error details:", result.error);
-          setError("email", result.error.message || "Login failed");
+          setError("email", result.error.message ?? "Login failed");
         } else if (result?.data) {
           console.log("Login successful:", result.data);
           window.location.href = "/";

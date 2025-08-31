@@ -157,7 +157,7 @@ export function useForm<T extends Record<string, any>>({
     const validator = validationSchema[field];
     if (!validator) return undefined;
 
-    return validator(values[field], values);
+    return validator(values[field]);
   }, [values, validationSchema]);
 
   const validateForm = useCallback((): boolean => {

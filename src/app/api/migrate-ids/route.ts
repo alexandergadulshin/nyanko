@@ -1,9 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { db } from "~/server/db";
 import { animeList, favorites } from "~/server/db/schema";
 import { enhancedAPI } from "~/lib/enhanced-api";
 import { eq, count } from "drizzle-orm";
+import { requireDatabase } from "~/lib/api-utils";
 
 // POST /api/migrate-ids - Migrate existing MAL IDs to internal ID system
 export async function POST(request: NextRequest) {
@@ -13,9 +13,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (!db) {
-      return NextResponse.json({ error: "Database not available" }, { status: 503 });
-    }
+    const database = requireDatabase();
 
     const { searchParams } = new URL(request.url);
     const migrateType = searchParams.get("type"); // "anime-list", "favorites", or "all"
@@ -26,7 +24,7 @@ export async function POST(request: NextRequest) {
     try {
       // Migrate anime list entries
       if (migrateType === "anime-list" || migrateType === "all") {
-        const animeListEntries = await db
+        const animeListEntries = await database
           .select()
           .from(animeList)
           .where(eq(animeList.userId, userId));
@@ -47,7 +45,7 @@ export async function POST(request: NextRequest) {
 
       // Migrate favorites entries
       if (migrateType === "favorites" || migrateType === "all") {
-        const favoritesEntries = await db
+        const favoritesEntries = await database
           .select()
           .from(favorites)
           .where(eq(favorites.userId, userId));
@@ -109,24 +107,22 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (!db) {
-      return NextResponse.json({ error: "Database not available" }, { status: 503 });
-    }
+    const database = requireDatabase();
 
     // Count items that could be migrated
-    const animeListCount = await db
+    const animeListCount = await database
       .select({ count: count() })
       .from(animeList)
       .where(eq(animeList.userId, userId));
 
-    const favoritesCount = await db
+    const favoritesCount = await database
       .select({ count: count() })
       .from(favorites)
       .where(eq(favorites.userId, userId));
 
     return NextResponse.json({
-      animeListEntries: animeListCount[0]?.count || 0,
-      favoritesEntries: favoritesCount[0]?.count || 0,
+      animeListEntries: animeListCount[0]?.count ?? 0,
+      favoritesEntries: favoritesCount[0]?.count ?? 0,
       message: "These are the items that would be migrated to internal IDs",
     });
   } catch (error) {

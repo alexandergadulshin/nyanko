@@ -1,205 +1,154 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { db } from "~/server/db";
 import { user, friendships, friendRequests } from "~/server/db/schema";
-import { auth } from "@clerk/nextjs/server";
 import { eq, and, or } from "drizzle-orm";
 import { randomUUID } from "crypto";
+import { requireAuth, requireDatabase, HTTP_STATUS, ERROR_MESSAGES, withErrorHandling, createApiError } from "~/lib/api-utils";
 
-// Send a friend request
-export async function POST(request: NextRequest) {
-  try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+interface SendFriendRequestBody {
+  toUserId: string;
+  message?: string;
+}
 
-    const body = await request.json();
-    const { toUserId, message } = body;
+export const POST = withErrorHandling(async (request: NextRequest) => {
+  const userId = await requireAuth();
+  const database = requireDatabase();
+  const body = await request.json() as SendFriendRequestBody;
+  const { toUserId, message } = body;
 
-    if (!toUserId) {
-      return NextResponse.json({ error: "Target user ID is required" }, { status: 400 });
-    }
+  if (!toUserId) {
+    throw createApiError("Target user ID is required", HTTP_STATUS.BAD_REQUEST);
+  }
 
-    if (toUserId === userId) {
-      return NextResponse.json({ error: "Cannot send friend request to yourself" }, { status: 400 });
-    }
+  if (toUserId === userId) {
+    throw createApiError("Cannot send friend request to yourself", HTTP_STATUS.BAD_REQUEST);
+  }
 
-    // Check if target user exists and allows friend requests
-    const targetUser = await db.query.user.findFirst({
-      where: eq(user.id, toUserId),
-      columns: {
-        id: true,
-        allowFriendRequests: true,
-        profileVisibility: true,
-      }
-    });
+  const targetUser = await database.query.user.findFirst({
+    where: eq(user.id, toUserId),
+    columns: { id: true, allowFriendRequests: true, profileVisibility: true },
+  });
 
-    if (!targetUser) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
-    }
+  if (!targetUser) {
+    throw createApiError(ERROR_MESSAGES.USER_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+  }
 
-    if (!targetUser.allowFriendRequests) {
-      return NextResponse.json({ error: "User is not accepting friend requests" }, { status: 403 });
-    }
+  if (!targetUser.allowFriendRequests) {
+    throw createApiError("User is not accepting friend requests", HTTP_STATUS.FORBIDDEN);
+  }
 
-    // Check if they're already friends
-    const existingFriendship = await db.query.friendships.findFirst({
+  const [existingFriendship, existingRequest] = await Promise.all([
+    database.query.friendships.findFirst({
       where: or(
         and(eq(friendships.userId1, userId), eq(friendships.userId2, toUserId)),
         and(eq(friendships.userId1, toUserId), eq(friendships.userId2, userId))
-      )
-    });
-
-    if (existingFriendship) {
-      return NextResponse.json({ error: "Already friends with this user" }, { status: 400 });
-    }
-
-    // Check if there's already a pending request from either direction
-    const existingRequest = await db.query.friendRequests.findFirst({
+      ),
+    }),
+    database.query.friendRequests.findFirst({
       where: and(
         or(
           and(eq(friendRequests.fromUserId, userId), eq(friendRequests.toUserId, toUserId)),
           and(eq(friendRequests.fromUserId, toUserId), eq(friendRequests.toUserId, userId))
         ),
         eq(friendRequests.status, "pending")
-      )
-    });
+      ),
+    }),
+  ]);
 
-    if (existingRequest) {
-      return NextResponse.json({ error: "Friend request already exists" }, { status: 400 });
-    }
+  if (existingFriendship) {
+    throw createApiError("Already friends with this user", HTTP_STATUS.CONFLICT);
+  }
 
-    // Create friend request
-    const newRequest = await db.insert(friendRequests).values({
+  if (existingRequest) {
+    throw createApiError("Friend request already exists", HTTP_STATUS.CONFLICT);
+  }
+
+  const [newRequest] = await database
+    .insert(friendRequests)
+    .values({
       id: randomUUID(),
       fromUserId: userId,
-      toUserId: toUserId,
+      toUserId,
       message: message?.trim() || null,
       status: "pending",
-    }).returning();
+    })
+    .returning();
 
-    return NextResponse.json({ 
-      success: true, 
-      request: newRequest[0] 
-    });
-  } catch (error) {
-    console.error("Error sending friend request:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
-  }
+  return NextResponse.json({ success: true, request: newRequest });
+});
+
+interface RespondToRequestBody {
+  requestId: string;
+  action: 'accept' | 'decline';
 }
 
-// Respond to a friend request (accept/decline)
-export async function PUT(request: NextRequest) {
-  try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+export const PUT = withErrorHandling(async (request: NextRequest) => {
+  const userId = await requireAuth();
+  const database = requireDatabase();
+  const body = await request.json() as RespondToRequestBody;
+  const { requestId, action } = body;
 
-    const body = await request.json();
-    const { requestId, action } = body;
-    
-    console.log('PUT request received:', { userId, requestId, action });
+  if (!requestId || !["accept", "decline"].includes(action)) {
+    throw createApiError("Request ID and valid action required", HTTP_STATUS.BAD_REQUEST);
+  }
 
-    if (!requestId || !["accept", "decline"].includes(action)) {
-      return NextResponse.json({ error: "Request ID and valid action required" }, { status: 400 });
-    }
+  const friendRequest = await database.query.friendRequests.findFirst({
+    where: and(
+      eq(friendRequests.id, requestId),
+      eq(friendRequests.toUserId, userId),
+      eq(friendRequests.status, "pending")
+    ),
+  });
 
-    // Find the friend request
-    console.log('Searching for friend request with:', { requestId, userId });
-    const friendRequest = await db.query.friendRequests.findFirst({
-      where: and(
-        eq(friendRequests.id, requestId),
-        eq(friendRequests.toUserId, userId),
-        eq(friendRequests.status, "pending")
-      )
-    });
-    
-    console.log('Found friend request:', friendRequest);
+  if (!friendRequest) {
+    throw createApiError("Friend request not found", HTTP_STATUS.NOT_FOUND);
+  }
 
-    if (!friendRequest) {
-      return NextResponse.json({ error: "Friend request not found" }, { status: 404 });
-    }
+  const updateData = { 
+    status: action === "accept" ? "accepted" : "declined" as const,
+    updatedAt: new Date() 
+  };
 
-    if (action === "accept") {
-      // Create friendship
-      await db.insert(friendships).values({
+  if (action === "accept") {
+    await Promise.all([
+      database.insert(friendships).values({
         id: randomUUID(),
         userId1: friendRequest.fromUserId,
         userId2: userId,
-      });
-
-      // Update request status
-      await db.update(friendRequests)
-        .set({ 
-          status: "accepted",
-          updatedAt: new Date()
-        })
-        .where(eq(friendRequests.id, requestId));
-
-      return NextResponse.json({ 
-        success: true, 
-        message: "Friend request accepted" 
-      });
-    } else {
-      // Decline request
-      await db.update(friendRequests)
-        .set({ 
-          status: "declined",
-          updatedAt: new Date()
-        })
-        .where(eq(friendRequests.id, requestId));
-
-      return NextResponse.json({ 
-        success: true, 
-        message: "Friend request declined" 
-      });
-    }
-  } catch (error) {
-    console.error("Error responding to friend request:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+      }),
+      database.update(friendRequests).set(updateData).where(eq(friendRequests.id, requestId)),
+    ]);
+  } else {
+    await database.update(friendRequests).set(updateData).where(eq(friendRequests.id, requestId));
   }
-}
 
-// Cancel a friend request (for the sender)
-export async function DELETE(request: NextRequest) {
-  try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  const message = action === "accept" ? "Friend request accepted" : "Friend request declined";
+  return NextResponse.json({ success: true, message });
+});
 
-    const { searchParams } = new URL(request.url);
-    const requestId = searchParams.get("requestId");
+export const DELETE = withErrorHandling(async (request: NextRequest) => {
+  const userId = await requireAuth();
+  const database = requireDatabase();
+  const { searchParams } = new URL(request.url);
+  const requestId = searchParams.get("requestId");
 
-    if (!requestId) {
-      return NextResponse.json({ error: "Request ID is required" }, { status: 400 });
-    }
+  if (!requestId) {
+    throw createApiError("Request ID is required", HTTP_STATUS.BAD_REQUEST);
+  }
 
-    // Find and delete the friend request (only if user is the sender)
-    const deletedRequest = await db.delete(friendRequests)
-      .where(
-        and(
-          eq(friendRequests.id, requestId),
-          eq(friendRequests.fromUserId, userId),
-          eq(friendRequests.status, "pending")
-        )
+  const deletedRequest = await database
+    .delete(friendRequests)
+    .where(
+      and(
+        eq(friendRequests.id, requestId),
+        eq(friendRequests.fromUserId, userId),
+        eq(friendRequests.status, "pending")
       )
-      .returning();
+    )
+    .returning();
 
-    if (deletedRequest.length === 0) {
-      return NextResponse.json({ error: "Friend request not found or cannot be cancelled" }, { status: 404 });
-    }
-
-    return NextResponse.json({ 
-      success: true, 
-      message: "Friend request cancelled" 
-    });
-  } catch (error) {
-    console.error("Error cancelling friend request:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  if (deletedRequest.length === 0) {
+    throw createApiError("Friend request not found or cannot be cancelled", HTTP_STATUS.NOT_FOUND);
   }
-}
+
+  return NextResponse.json({ success: true, message: "Friend request cancelled" });
+});

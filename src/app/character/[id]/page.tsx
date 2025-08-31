@@ -1,10 +1,24 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { FaHeart, FaUser, FaArrowLeft } from "react-icons/fa";
-import { jikanAPI, type CharacterItem } from "~/utils/api";
+import { type CharacterItem } from "~/utils/api";
 import { FavoriteButton } from "~/components/FavoriteButton";
+
+const API_BASE = 'https://api.jikan.moe/v4';
+const PLACEHOLDER_IMAGES = {
+  character: '/placeholder-character.jpg',
+  person: '/placeholder-person.jpg',
+  anime: '/placeholder-anime.jpg',
+  manga: '/placeholder-manga.jpg'
+} as const;
+
+const LIMITS = {
+  animeography: 12,
+  mangaography: 12,
+  voiceActors: 8
+} as const;
 
 interface DetailedCharacterItem extends Omit<CharacterItem, 'about'> {
   nameKanji: string | null;
@@ -45,44 +59,43 @@ export default function CharacterDetailPage() {
 
   const characterId = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
 
-  useEffect(() => {
-    const fetchCharacterDetails = async () => {
-      if (!characterId) return;
+  const fetchCharacterDetails = useCallback(async () => {
+    if (!characterId) return;
+    
+    try {
+      setLoading(true);
+      const response = await fetch(`${API_BASE}/characters/${characterId}/full`);
+      if (!response.ok) throw new Error(`API error: ${response.status}`);
       
-      try {
-        setLoading(true);
-        const response = await fetch(`https://api.jikan.moe/v4/characters/${characterId}/full`);
-        if (!response.ok) throw new Error(`API error: ${response.status}`);
-        
-        const data = await response.json();
-        const characterData = data.data;
-        
-        const detailedCharacter: DetailedCharacterItem = {
-          id: characterData.mal_id,
-          malId: characterData.mal_id,
-          name: characterData.name,
-          nameKanji: characterData.name_kanji,
-          nicknames: characterData.nicknames || [],
-          description: characterData.about || 'No description available.',
-          about: characterData.about,
-          image: characterData.images?.jpg?.image_url || characterData.images?.webp?.image_url || '',
-          favorites: characterData.favorites || 0,
-          animeography: characterData.anime?.slice(0, 12) || [],
-          mangaography: characterData.manga?.slice(0, 12) || [],
-          voiceActors: characterData.voices?.slice(0, 8) || [],
-        };
-        
-        setCharacter(detailedCharacter);
-      } catch (err) {
-        setError("Failed to load character details");
-        console.error("Error fetching character details:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    void fetchCharacterDetails();
+      const { data: characterData } = await response.json();
+      
+      const detailedCharacter: DetailedCharacterItem = {
+        id: characterData.mal_id,
+        malId: characterData.mal_id,
+        name: characterData.name,
+        nameKanji: characterData.name_kanji,
+        nicknames: characterData.nicknames || [],
+        description: characterData.about || 'No description available.',
+        about: characterData.about,
+        image: characterData.images?.jpg?.image_url || characterData.images?.webp?.image_url || '',
+        favorites: characterData.favorites ?? 0,
+        animeography: characterData.anime?.slice(0, LIMITS.animeography) || [],
+        mangaography: characterData.manga?.slice(0, LIMITS.mangaography) || [],
+        voiceActors: characterData.voices?.slice(0, LIMITS.voiceActors) || [],
+      };
+      
+      setCharacter(detailedCharacter);
+    } catch (err) {
+      setError("Failed to load character details");
+      console.error("Error fetching character details:", err);
+    } finally {
+      setLoading(false);
+    }
   }, [characterId]);
+
+  useEffect(() => {
+    void fetchCharacterDetails();
+  }, [fetchCharacterDetails]);
 
   if (loading) {
     return (
@@ -113,7 +126,6 @@ export default function CharacterDetailPage() {
 
   return (
     <div className="min-h-screen bg-[#181622] light:bg-transparent">
-      {/* Back Button */}
       <div className="sticky top-0 z-10 bg-[#181622]/80 light:bg-gray-100/80 backdrop-blur-sm border-b border-gray-800 light:border-gray-300">
         <div className="container mx-auto px-4 py-4">
           <button
@@ -128,7 +140,6 @@ export default function CharacterDetailPage() {
 
       <div className="container mx-auto px-4 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left Column - Image and Basic Info */}
           <div className="lg:col-span-1">
             <div className="sticky top-32">
               <img
@@ -136,11 +147,10 @@ export default function CharacterDetailPage() {
                 alt={character.name}
                 className="w-full max-w-sm mx-auto rounded-lg shadow-2xl"
                 onError={(e) => {
-                  e.currentTarget.src = '/placeholder-character.jpg';
+                  e.currentTarget.src = PLACEHOLDER_IMAGES.character;
                 }}
               />
               
-              {/* Quick Stats */}
               <div className="mt-6 bg-gray-800/50 rounded-lg p-4">
                 <h3 className="text-white font-semibold mb-3">Quick Stats</h3>
                 <div className="space-y-2 text-sm">
@@ -158,9 +168,7 @@ export default function CharacterDetailPage() {
             </div>
           </div>
 
-          {/* Right Column - Detailed Information */}
           <div className="lg:col-span-2">
-            {/* Title and Names */}
             <div className="mb-6">
               <h1 className="text-4xl font-bold text-white mb-2">{character.name}</h1>
               {character.nameKanji && (
@@ -197,7 +205,6 @@ export default function CharacterDetailPage() {
               </div>
             </div>
 
-            {/* About */}
             {character.about && (
               <div className="mb-8">
                 <h3 className="text-2xl font-semibold text-white mb-4">About</h3>
@@ -205,7 +212,6 @@ export default function CharacterDetailPage() {
               </div>
             )}
 
-            {/* Voice Actors */}
             {character.voiceActors.length > 0 && (
               <div className="mb-8">
                 <h3 className="text-2xl font-semibold text-white mb-4">Voice Actors</h3>
@@ -217,7 +223,7 @@ export default function CharacterDetailPage() {
                         alt={va.person.name}
                         className="w-12 h-12 rounded-full object-cover"
                         onError={(e) => {
-                          e.currentTarget.src = '/placeholder-person.jpg';
+                          e.currentTarget.src = PLACEHOLDER_IMAGES.person;
                         }}
                       />
                       <div>
@@ -230,7 +236,6 @@ export default function CharacterDetailPage() {
               </div>
             )}
 
-            {/* Animeography */}
             {character.animeography.length > 0 && (
               <div className="mb-8">
                 <h3 className="text-2xl font-semibold text-white mb-4">Animeography</h3>
@@ -246,7 +251,7 @@ export default function CharacterDetailPage() {
                         alt={anime.anime.title}
                         className="w-full aspect-[3/4] object-cover"
                         onError={(e) => {
-                          e.currentTarget.src = '/placeholder-anime.jpg';
+                          e.currentTarget.src = PLACEHOLDER_IMAGES.anime;
                         }}
                       />
                       <div className="p-3">
@@ -261,7 +266,6 @@ export default function CharacterDetailPage() {
               </div>
             )}
 
-            {/* Mangaography */}
             {character.mangaography.length > 0 && (
               <div className="mb-8">
                 <h3 className="text-2xl font-semibold text-white mb-4">Mangaography</h3>
@@ -277,7 +281,7 @@ export default function CharacterDetailPage() {
                         alt={manga.manga.title}
                         className="w-full aspect-[3/4] object-cover"
                         onError={(e) => {
-                          e.currentTarget.src = '/placeholder-manga.jpg';
+                          e.currentTarget.src = PLACEHOLDER_IMAGES.manga;
                         }}
                       />
                       <div className="p-3">

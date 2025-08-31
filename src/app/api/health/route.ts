@@ -1,9 +1,10 @@
-import { db } from "~/server/db";
 import { sql } from "drizzle-orm";
+import { requireDatabase } from "~/lib/api-utils";
 
 export async function GET() {
   try {
-    await db.execute(sql`SELECT 1`);
+    const database = requireDatabase();
+    await database.execute(sql`SELECT 1`);
     
     return Response.json({ 
       status: "ok", 

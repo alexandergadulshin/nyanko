@@ -40,7 +40,7 @@ export function SignupForm() {
       console.log("Signup result:", result);
       
       if (result.error) {
-        setError(result.error.message || "Signup failed");
+        setError(result.error.message ?? "Signup failed");
       } else {
         setSuccess(true);
         setTimeout(() => {

@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useSession } from "~/lib/auth-client";
 import { FaPlus, FaCheck, FaPlay, FaPause, FaTimes, FaEye, FaStar, FaTrash } from "react-icons/fa";
+import { type UserAnimeStatus } from "~/lib/status-utils";
 
 interface AnimeDetails {
   mal_id: number;
@@ -34,7 +35,7 @@ export function AddToListButton({ anime }: AddToListButtonProps) {
   const [currentEntry, setCurrentEntry] = useState<ListEntry | null>(null);
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
-    status: "planning" as const,
+    status: "planning" as UserAnimeStatus,
     score: 0,
     episodesWatched: 0,
     notes: "",
@@ -120,7 +121,7 @@ export function AddToListButton({ anime }: AddToListButtonProps) {
     if (currentEntry) {
       setFormData({
         status: currentEntry.status,
-        score: currentEntry.score || 0,
+        score: currentEntry.score ?? 0,
         episodesWatched: currentEntry.episodesWatched,
         notes: currentEntry.notes || "",
       });
@@ -205,7 +206,7 @@ export function AddToListButton({ anime }: AddToListButtonProps) {
                         value={option.value}
                         checked={formData.status === option.value}
                         onChange={(e) =>
-                          setFormData(prev => ({ ...prev, status: e.target.value as any }))
+                          setFormData(prev => ({ ...prev, status: e.target.value as UserAnimeStatus }))
                         }
                         className="sr-only"
                       />

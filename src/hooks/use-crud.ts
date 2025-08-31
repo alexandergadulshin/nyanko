@@ -45,14 +45,31 @@ export interface UseCrudReturn<T extends CrudItem> extends CrudState<T> {
   filteredItems: (filterFn: (item: T) => boolean) => T[];
 }
 
+const DEFAULT_OPTIONS = {
+  optimisticUpdates: true,
+  retryAttempts: 3,
+  retryDelay: 1000
+} as const;
+
+const HTTP_METHODS = {
+  GET: 'GET',
+  POST: 'POST',
+  PUT: 'PUT',
+  DELETE: 'DELETE'
+} as const;
+
+const HEADERS = {
+  'Content-Type': 'application/json'
+} as const;
+
 export function useCrud<T extends CrudItem>({
   endpoint,
   initialData = [],
   onSuccess,
   onError,
-  optimisticUpdates = true,
-  retryAttempts = 3,
-  retryDelay = 1000
+  optimisticUpdates = DEFAULT_OPTIONS.optimisticUpdates,
+  retryAttempts = DEFAULT_OPTIONS.retryAttempts,
+  retryDelay = DEFAULT_OPTIONS.retryDelay
 }: CrudOptions<T>): UseCrudReturn<T> {
   
   const [state, setState] = useState<CrudState<T>>({
@@ -64,14 +81,13 @@ export function useCrud<T extends CrudItem>({
     deleting: new Set()
   });
 
-  // Helper function to handle API requests with retry logic
   const makeRequest = useCallback(async (
     url: string,
     options: RequestInit,
     attempts = 0
   ): Promise<Response> => {
     try {
-      const response = await fetch(url, options);
+      const response = await globalThis.fetch(url, options);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
@@ -85,7 +101,6 @@ export function useCrud<T extends CrudItem>({
     }
   }, [retryAttempts, retryDelay]);
 
-  // Fetch items
   const fetch = useCallback(async (params?: Record<string, any>) => {
     setState(prev => ({ ...prev, loading: true, error: null }));
     
@@ -100,10 +115,8 @@ export function useCrud<T extends CrudItem>({
       }
 
       const response = await makeRequest(url.toString(), {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        }
+        method: HTTP_METHODS.GET,
+        headers: HEADERS
       });
 
       const data = await response.json();
@@ -122,11 +135,9 @@ export function useCrud<T extends CrudItem>({
     }
   }, [endpoint, makeRequest, onError]);
 
-  // Create item
   const create = useCallback(async (data: Omit<T, 'id'>): Promise<T | null> => {
     setState(prev => ({ ...prev, creating: true, error: null }));
 
-    // Optimistic update
     const tempId = `temp-${Date.now()}`;
     const optimisticItem = { ...data, id: tempId } as T;
     
@@ -139,10 +150,8 @@ export function useCrud<T extends CrudItem>({
 
     try {
       const response = await makeRequest(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        method: HTTP_METHODS.POST,
+        headers: HEADERS,
         body: JSON.stringify(data)
       });
 
@@ -163,7 +172,6 @@ export function useCrud<T extends CrudItem>({
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to create item';
       
-      // Revert optimistic update
       if (optimisticUpdates) {
         setState(prev => ({
           ...prev,
@@ -177,7 +185,6 @@ export function useCrud<T extends CrudItem>({
     }
   }, [endpoint, makeRequest, optimisticUpdates, onSuccess, onError]);
 
-  // Update item
   const update = useCallback(async (id: string | number, data: Partial<T>): Promise<T | null> => {
     setState(prev => ({
       ...prev,
@@ -185,7 +192,6 @@ export function useCrud<T extends CrudItem>({
       error: null
     }));
 
-    // Optimistic update
     const originalItem = state.items.find(item => item.id === id);
     const optimisticItem = originalItem ? { ...originalItem, ...data } : null;
 
@@ -198,10 +204,8 @@ export function useCrud<T extends CrudItem>({
 
     try {
       const response = await makeRequest(`${endpoint}/${id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        method: HTTP_METHODS.PUT,
+        headers: HEADERS,
         body: JSON.stringify(data)
       });
 
@@ -220,7 +224,6 @@ export function useCrud<T extends CrudItem>({
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to update item';
       
-      // Revert optimistic update
       if (optimisticUpdates && originalItem) {
         setState(prev => ({
           ...prev,
@@ -239,7 +242,6 @@ export function useCrud<T extends CrudItem>({
     }
   }, [endpoint, makeRequest, state.items, optimisticUpdates, onSuccess, onError]);
 
-  // Delete item
   const deleteItem = useCallback(async (id: string | number): Promise<boolean> => {
     setState(prev => ({
       ...prev,
@@ -247,7 +249,6 @@ export function useCrud<T extends CrudItem>({
       error: null
     }));
 
-    // Optimistic update
     const originalItems = state.items;
     if (optimisticUpdates) {
       setState(prev => ({
@@ -258,10 +259,8 @@ export function useCrud<T extends CrudItem>({
 
     try {
       await makeRequest(`${endpoint}/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        }
+        method: HTTP_METHODS.DELETE,
+        headers: HEADERS
       });
 
       setState(prev => ({
@@ -280,7 +279,6 @@ export function useCrud<T extends CrudItem>({
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to delete item';
       
-      // Revert optimistic update
       if (optimisticUpdates) {
         setState(prev => ({ ...prev, items: originalItems }));
       }
@@ -296,7 +294,6 @@ export function useCrud<T extends CrudItem>({
     }
   }, [endpoint, makeRequest, state.items, optimisticUpdates, onSuccess, onError]);
 
-  // Local state management actions
   const clear = useCallback(() => {
     setState(prev => ({ ...prev, items: [], error: null }));
   }, []);
@@ -327,7 +324,6 @@ export function useCrud<T extends CrudItem>({
 
   const refresh = useCallback(() => fetch(), [fetch]);
 
-  // Helper functions
   const isItemLoading = useCallback((id: string | number) => {
     return state.updating.has(id) || state.deleting.has(id);
   }, [state.updating, state.deleting]);
@@ -368,7 +364,6 @@ export function useCrud<T extends CrudItem>({
   };
 }
 
-// Specialized hooks for common use cases
 export interface AnimeListItem extends CrudItem {
   animeId: number;
   animeTitle: string;
@@ -414,7 +409,6 @@ export function useFavorites() {
   });
 }
 
-// Bulk operations helper
 export interface BulkOperationOptions<T extends CrudItem> {
   items: T[];
   operation: 'create' | 'update' | 'delete';
@@ -423,11 +417,13 @@ export interface BulkOperationOptions<T extends CrudItem> {
   onBatchComplete?: (batch: T[], batchIndex: number) => void;
 }
 
+const DEFAULT_BATCH_SIZE = 10;
+
 export async function executeBulkOperation<T extends CrudItem>(
   crud: UseCrudReturn<T>,
   options: BulkOperationOptions<T>
 ): Promise<{ successful: T[]; failed: { item: T; error: string }[] }> {
-  const { items, operation, batchSize = 10, onProgress, onBatchComplete } = options;
+  const { items, operation, batchSize = DEFAULT_BATCH_SIZE, onProgress, onBatchComplete } = options;
   const successful: T[] = [];
   const failed: { item: T; error: string }[] = [];
 

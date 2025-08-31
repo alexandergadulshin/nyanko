@@ -1,117 +1,91 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { db } from "~/server/db";
 import { user, animeList } from "~/server/db/schema";
 import { eq } from "drizzle-orm";
 import { currentUser } from "@clerk/nextjs/server";
+import { requireDatabase, HTTP_STATUS, ERROR_MESSAGES, withErrorHandling } from "~/lib/api-utils";
 
-export async function GET(
+const PROFILE_COLUMNS = {
+  id: user.id,
+  name: user.name,
+  email: user.email,
+  image: user.image,
+  username: user.username,
+  bio: user.bio,
+  createdAt: user.createdAt,
+} as const;
+
+export const GET = withErrorHandling(async (
   request: NextRequest,
   { params }: { params: Promise<{ userId: string }> }
-) {
-  try {
-    const { userId } = await params;
+) => {
+  const { userId } = await params;
+  const database = requireDatabase();
+  
+  let [userProfile] = await database
+    .select(PROFILE_COLUMNS)
+    .from(user)
+    .where(eq(user.id, userId))
+    .limit(1);
+
+  if (!userProfile) {
+    const clerkUser = await currentUser();
     
-    let userProfile = await db
-      .select({
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        image: user.image,
-        username: user.username,
-        bio: user.bio,
-        createdAt: user.createdAt
-      })
-      .from(user)
-      .where(eq(user.id, userId))
-      .limit(1);
-
-    // If user doesn't exist in database, create them from Clerk data
-    if (userProfile.length === 0) {
-      const clerkUser = await currentUser();
-      
-      if (!clerkUser || clerkUser.id !== userId) {
-        return NextResponse.json(
-          { error: "User not found" },
-          { status: 404 }
-        );
-      }
-
-      // Create the user in the database
-      const newUser = await db
-        .insert(user)
-        .values({
-          id: clerkUser.id,
-          name: clerkUser.fullName || clerkUser.firstName || "User",
-          email: clerkUser.emailAddresses[0]?.emailAddress || "",
-          image: clerkUser.imageUrl || null,
-          username: clerkUser.username || null,
-          bio: null,
-        })
-        .returning({
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          image: user.image,
-          username: user.username,
-          bio: user.bio,
-          createdAt: user.createdAt
-        });
-
-      userProfile = newUser;
+    if (!clerkUser || clerkUser.id !== userId) {
+      return NextResponse.json({ error: ERROR_MESSAGES.USER_NOT_FOUND }, { status: HTTP_STATUS.NOT_FOUND });
     }
 
-    const userAnimeList = await db
-      .select()
-      .from(animeList)
-      .where(eq(animeList.userId, userId));
-
-    return NextResponse.json({
-      profile: userProfile[0],
-      animeList: userAnimeList
-    });
-  } catch (error) {
-    console.error("Error fetching profile:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch profile" },
-      { status: 500 }
-    );
+    [userProfile] = await database
+      .insert(user)
+      .values({
+        id: clerkUser.id,
+        name: clerkUser.fullName || clerkUser.firstName || "User",
+        email: clerkUser.emailAddresses[0]?.emailAddress || "",
+        image: clerkUser.imageUrl || null,
+        username: clerkUser.username || null,
+        bio: null,
+      })
+      .returning(PROFILE_COLUMNS);
   }
+
+  const userAnimeList = await database
+    .select()
+    .from(animeList)
+    .where(eq(animeList.userId, userId));
+
+  return NextResponse.json({ profile: userProfile, animeList: userAnimeList });
+});
+
+interface UpdateProfileBody {
+  name?: string;
+  username?: string;
+  bio?: string;
+  image?: string;
 }
 
-export async function PUT(
+export const PUT = withErrorHandling(async (
   request: NextRequest,
   { params }: { params: Promise<{ userId: string }> }
-) {
-  try {
-    const { userId } = await params;
-    const body = await request.json();
-    const { name, username, bio, image } = body;
+) => {
+  const { userId } = await params;
+  const database = requireDatabase();
+  const body = await request.json() as UpdateProfileBody;
+  const { name, username, bio, image } = body;
 
-    const updatedUser = await db
-      .update(user)
-      .set({
-        name,
-        username: username || null,
-        bio: bio || null,
-        image: image || null,
-        updatedAt: new Date()
-      })
-      .where(eq(user.id, userId))
-      .returning();
+  const [updatedUser] = await database
+    .update(user)
+    .set({
+      name,
+      username: username || null,
+      bio: bio || null,
+      image: image || null,
+      updatedAt: new Date(),
+    })
+    .where(eq(user.id, userId))
+    .returning();
 
-    if (updatedUser.length === 0) {
-      return NextResponse.json(
-        { error: "User not found" },
-        { status: 404 }
-      );
-    }
-
-    return NextResponse.json({ profile: updatedUser[0] });
-  } catch (error) {
-    console.error("Error updating profile:", error);
-    return NextResponse.json(
-      { error: "Failed to update profile" },
-      { status: 500 }
-    );
+  if (!updatedUser) {
+    return NextResponse.json({ error: ERROR_MESSAGES.USER_NOT_FOUND }, { status: HTTP_STATUS.NOT_FOUND });
   }
-}
+
+  return NextResponse.json({ profile: updatedUser });
+});

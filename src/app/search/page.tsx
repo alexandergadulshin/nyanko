@@ -1,9 +1,33 @@
 "use client";
 
-import React, { useState, useEffect, Suspense } from "react";
+import React, { useState, useEffect, Suspense, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { FaStar, FaHeart } from "react-icons/fa";
 import { jikanAPI, type SearchCategory, type SearchItem } from "~/utils/api";
+
+const CATEGORY_CONFIG = {
+  anime: { label: 'Anime', icon: '🎬' },
+  characters: { label: 'Characters', icon: '👤' },
+  people: { label: 'People', icon: '👨‍💼' },
+  manga: { label: 'Manga', icon: '📚' }
+} as const;
+
+const SEARCH_CATEGORIES: SearchCategory[] = ['anime', 'characters', 'people', 'manga'];
+
+const STATUS_COLORS = {
+  anime: {
+    'Airing Now': 'bg-green-500',
+    'Scheduled': 'bg-blue-500',
+    'Movie': 'bg-purple-500'
+  },
+  manga: {
+    'Publishing': 'bg-green-500',
+    'Finished': 'bg-blue-500'
+  },
+  default: 'bg-gray-500'
+} as const;
+
+const SEARCH_LIMIT = 24;
 
 function SearchPageContent() {
   const searchParams = useSearchParams();
@@ -13,91 +37,75 @@ function SearchPageContent() {
   const [error, setError] = useState<string | null>(null);
   const [category, setCategory] = useState<SearchCategory>("anime");
 
-  const query = searchParams.get("q") || "";
+  const query = searchParams.get("q") ?? "";
   const categoryParam = searchParams.get("category") as SearchCategory;
 
-  // Update category from URL params
   useEffect(() => {
-    if (categoryParam && ['anime', 'characters', 'people', 'manga'].includes(categoryParam)) {
+    if (categoryParam && SEARCH_CATEGORIES.includes(categoryParam)) {
       setCategory(categoryParam);
     }
   }, [categoryParam]);
 
-  useEffect(() => {
-    const performSearch = async () => {
-      if (!query.trim()) return;
+  const performSearch = useCallback(async () => {
+    if (!query.trim()) return;
 
-      setLoading(true);
-      setError(null);
-      
-      try {
-        const searchResults = await jikanAPI.searchMultiCategory(query, category, 24);
-        setResults(searchResults);
-      } catch (err) {
-        console.error("Search error:", err);
-        const errorMessage = err instanceof Error && err.message.includes('rate limited')
-          ? "Too many requests. Please wait a moment before searching again."
-          : `Failed to search ${category}. Please try again.`;
-        setError(errorMessage);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    performSearch();
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const searchResults = await jikanAPI.searchMultiCategory(query, category, SEARCH_LIMIT);
+      setResults(searchResults);
+    } catch (err) {
+      console.error("Search error:", err);
+      const errorMessage = err instanceof Error && err.message.includes('rate limited')
+        ? "Too many requests. Please wait a moment before searching again."
+        : `Failed to search ${category}. Please try again.`;
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
+    }
   }, [query, category]);
 
-  const handleItemClick = (item: SearchItem) => {
-    const path = category === 'anime' ? `/anime/${item.malId}` :
-                 category === 'manga' ? `/manga/${item.malId}` :
-                 category === 'characters' ? `/character/${item.malId}` :
-                 `/person/${item.malId}`;
-    router.push(path);
-  };
+  useEffect(() => {
+    void performSearch();
+  }, [performSearch]);
 
-  const getCategoryLabel = (cat: SearchCategory) => {
-    switch (cat) {
-      case 'anime': return 'Anime';
-      case 'characters': return 'Characters';
-      case 'people': return 'People';
-      case 'manga': return 'Manga';
-      default: return 'Anime';
-    }
-  };
+  const handleItemClick = useCallback((item: SearchItem) => {
+    const pathMap = {
+      anime: `/anime/${item.malId}`,
+      manga: `/manga/${item.malId}`,
+      characters: `/character/${item.malId}`,
+      people: `/person/${item.malId}`
+    };
+    router.push(pathMap[category]);
+  }, [category, router]);
 
-  const getItemTitle = (item: SearchItem) => {
-    return 'title' in item ? item.title : item.name;
-  };
+  const getCategoryLabel = useCallback((cat: SearchCategory) => 
+    CATEGORY_CONFIG[cat]?.label || 'Anime', []);
 
-  const getCategoryIcon = (cat: SearchCategory) => {
-    switch (cat) {
-      case 'anime': return '🎬';
-      case 'characters': return '👤';
-      case 'people': return '👨‍💼';
-      case 'manga': return '📚';
-      default: return '🎬';
-    }
-  };
+  const getItemTitle = useCallback((item: SearchItem) => 
+    'title' in item ? item.title : item.name, []);
+
+  const getCategoryIcon = useCallback((cat: SearchCategory) => 
+    CATEGORY_CONFIG[cat]?.icon || '🎬', []);
   
-  const handleCategoryChange = (newCategory: SearchCategory) => {
+  const handleCategoryChange = useCallback((newCategory: SearchCategory) => {
     setCategory(newCategory);
-    // Update URL to reflect category change
     const newSearchParams = new URLSearchParams(searchParams);
     newSearchParams.set('category', newCategory);
     if (query) {
       router.push(`/search?${newSearchParams.toString()}`);
     }
-  };
+  }, [searchParams, query, router]);
 
   return (
     <div className="min-h-screen bg-[#181622] light:bg-transparent">
       <div className="container mx-auto px-4 py-8">
-        {/* Category Selector */}
         <div className="mb-8">
           <div className="flex justify-center mb-4">
             <div className="bg-gray-800/60 backdrop-blur-sm rounded-xl p-2 border border-gray-700/30">
               <div className="flex space-x-1">
-                {(['anime', 'characters', 'people', 'manga'] as SearchCategory[]).map((cat) => (
+                {SEARCH_CATEGORIES.map((cat) => (
                   <button
                     key={cat}
                     onClick={() => handleCategoryChange(cat)}
@@ -173,12 +181,7 @@ function SearchPageContent() {
                       {'status' in item && (
                         <div className="absolute top-2 right-2">
                           <span className={`px-2 py-1 text-xs font-semibold text-white rounded-md shadow-lg ${
-                            (category === 'anime' && item.status === "Airing Now") ? "bg-green-500" :
-                            (category === 'anime' && item.status === "Scheduled") ? "bg-blue-500" :
-                            (category === 'anime' && item.status === "Movie") ? "bg-purple-500" :
-                            (category === 'manga' && item.status === "Publishing") ? "bg-green-500" :
-                            (category === 'manga' && item.status === "Finished") ? "bg-blue-500" :
-                            "bg-gray-500"
+                            STATUS_COLORS[category]?.[item.status as keyof typeof STATUS_COLORS.anime] || STATUS_COLORS.default
                           }`}>
                             {item.status}
                           </span>

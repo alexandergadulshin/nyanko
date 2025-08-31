@@ -1,3 +1,7 @@
+interface BasicMalItem {
+  mal_id: number;
+  name: string;
+}
 
 export interface JikanAnimeData {
   mal_id: number;
@@ -18,11 +22,11 @@ export interface JikanAnimeData {
   year: number | null;
   season: string | null;
   broadcast?: { day: string | null; time: string | null; timezone: string | null };
-  producers: Array<{ mal_id: number; name: string }>;
-  studios: Array<{ mal_id: number; name: string }>;
-  genres: Array<{ mal_id: number; name: string }>;
-  themes: Array<{ mal_id: number; name: string }>;
-  demographics: Array<{ mal_id: number; name: string }>;
+  producers: BasicMalItem[];
+  studios: BasicMalItem[];
+  genres: BasicMalItem[];
+  themes: BasicMalItem[];
+  demographics: BasicMalItem[];
   duration: string | null;
   rating: string | null;
   aired: { from: string | null; to: string | null };
@@ -112,90 +116,115 @@ export type SearchCategory = "anime" | "characters" | "people" | "manga";
 export type SearchItem = AnimeItem | CharacterItem | PersonItem | MangaItem;
 
 const JIKAN_BASE_URL = 'https://api.jikan.moe/v4';
+const CACHE_EXPIRY = 600000;
+const RATE_LIMIT_DELAY = 5000;
+const RETRY_DELAY = 10000;
+const MAX_LIMIT = 25;
+const DEFAULT_LIMIT = 20;
+
+const STATUS_MAP = {
+  'Not yet aired': 'Scheduled',
+  'Movie': 'Movie',
+  'Finished': 'Finished'
+} as const;
+
+const MANGA_STATUS_MAP = {
+  'Not yet published': 'Not yet published',
+  'Discontinued': 'Discontinued',
+  'Finished': 'Finished',
+  'Publishing': 'Publishing'
+} as const;
+
+const FALLBACK_GENRES: GenreItem[] = [
+  { mal_id: 1, name: "Action", count: 0 },
+  { mal_id: 2, name: "Adventure", count: 0 },
+  { mal_id: 4, name: "Comedy", count: 0 },
+  { mal_id: 8, name: "Drama", count: 0 },
+  { mal_id: 10, name: "Fantasy", count: 0 },
+  { mal_id: 14, name: "Horror", count: 0 },
+  { mal_id: 16, name: "Magic", count: 0 },
+  { mal_id: 18, name: "Mecha", count: 0 },
+  { mal_id: 19, name: "Music", count: 0 },
+  { mal_id: 22, name: "Romance", count: 0 },
+  { mal_id: 23, name: "School", count: 0 },
+  { mal_id: 24, name: "Sci-Fi", count: 0 },
+  { mal_id: 27, name: "Shounen", count: 0 },
+  { mal_id: 29, name: "Space", count: 0 },
+  { mal_id: 30, name: "Sports", count: 0 },
+  { mal_id: 31, name: "Super Power", count: 0 },
+  { mal_id: 37, name: "Supernatural", count: 0 },
+  { mal_id: 38, name: "Military", count: 0 },
+  { mal_id: 39, name: "Police", count: 0 },
+  { mal_id: 40, name: "Psychological", count: 0 }
+];
 
 class JikanAPIService {
   private cache = new Map<string, { data: JikanResponse | JikanSingleResponse; timestamp: number }>();
-  private readonly cacheExpiry = 600000; // Increased to 10 minutes
   private lastRequestTime = 0;
-  private readonly rateLimitDelay = 5000; // Increased to 5 seconds
 
   private async makeRequest(endpoint: string): Promise<JikanResponse> {
     const cached = this.cache.get(endpoint);
     const now = Date.now();
     
-    if (cached && (now - cached.timestamp) < this.cacheExpiry) {
-      console.log("Using cached data for:", endpoint);
+    if (cached && (now - cached.timestamp) < CACHE_EXPIRY) {
       return cached.data as JikanResponse;
     }
 
     const timeSinceLastRequest = now - this.lastRequestTime;
-    if (timeSinceLastRequest < this.rateLimitDelay) {
-      const delay = this.rateLimitDelay - timeSinceLastRequest;
-      console.log(`Rate limiting: waiting ${delay}ms before request`);
-      await new Promise(resolve => setTimeout(resolve, delay));
+    if (timeSinceLastRequest < RATE_LIMIT_DELAY) {
+      await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY - timeSinceLastRequest));
     }
 
     const url = `${JIKAN_BASE_URL}${endpoint}`;
-    console.log("Making API request to:", url);
-    
     this.lastRequestTime = Date.now();
     
     try {
-      const response = await fetch(url);
-      
-      if (!response.ok) {
-        if (response.status === 429) {
-          console.warn(`Rate limited on ${url}, waiting 10 seconds before retry`);
-          await new Promise(resolve => setTimeout(resolve, 10000));
-          this.lastRequestTime = Date.now();
-          const retryResponse = await fetch(url);
-          if (!retryResponse.ok) {
-            console.warn(`Retry also rate limited: ${retryResponse.status} for ${url}`);
-            throw new Error(`API rate limited: ${retryResponse.status}`);
-          }
-          const retryData = await retryResponse.json() as JikanResponse;
-          this.cache.set(endpoint, { data: retryData, timestamp: Date.now() });
-          return retryData;
-        }
-        
-        if (response.status >= 500) {
-          console.warn(`Server error: ${response.status} for URL: ${url} - API temporarily unavailable`);
-          throw new Error(`Server error: The API is currently experiencing issues. Please try again later.`);
-        }
-        
-        console.error(`API error: ${response.status} for URL: ${url}`);
-        throw new Error(`API error: ${response.status}`);
-      }
-      
+      const response = await this.fetchWithRetry(url);
       const data = await response.json() as JikanResponse;
-      console.log("API response received, data length:", data.data?.length || 0);
       this.cache.set(endpoint, { data, timestamp: Date.now() });
       return data;
     } catch (error) {
-      if (error instanceof Error && error.message.includes('Server error')) {
-        console.warn('API request failed due to server error:', error.message);
-      } else {
-        console.error('API request failed:', error);
-      }
       throw error;
     }
   }
 
-  private removeDuplicates(animeList: AnimeItem[]): AnimeItem[] {
-    const seen = new Set<number>();
-    return animeList.filter(anime => {
-      if (seen.has(anime.malId)) {
-        return false;
+  private async fetchWithRetry(url: string): Promise<Response> {
+    const response = await fetch(url);
+    
+    if (response.status === 429) {
+      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+      this.lastRequestTime = Date.now();
+      const retryResponse = await fetch(url);
+      if (!retryResponse.ok) {
+        throw new Error(`API rate limited: ${retryResponse.status}`);
       }
-      seen.add(anime.malId);
+      return retryResponse;
+    }
+    
+    if (response.status >= 500) {
+      throw new Error(`Server error: The API is currently experiencing issues.`);
+    }
+    
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status}`);
+    }
+    
+    return response;
+  }
+
+  private removeDuplicates<T extends { malId: number }>(items: T[]): T[] {
+    const seen = new Set<number>();
+    return items.filter(item => {
+      if (seen.has(item.malId)) return false;
+      seen.add(item.malId);
       return true;
     });
   }
 
   private transformAnimeData(anime: JikanAnimeData): AnimeItem {
     const status = anime.airing ? 'Airing Now' : 
-                   anime.status === 'Not yet aired' ? 'Scheduled' :
-                   anime.type === 'Movie' ? 'Movie' : 'Finished';
+                   STATUS_MAP[anime.status as keyof typeof STATUS_MAP] ?? 
+                   (anime.type === 'Movie' ? 'Movie' : 'Finished');
 
     return {
       id: anime.mal_id,
@@ -213,11 +242,6 @@ class JikanAPIService {
   private transformDetailedAnimeData(anime: JikanAnimeData): DetailedAnimeItem {
     const basicData = this.transformAnimeData(anime);
     
-    const formatBroadcast = (broadcast: typeof anime.broadcast) => {
-      if (!broadcast?.day || !broadcast?.time) return null;
-      return `${broadcast.day}s at ${broadcast.time}`;
-    };
-
     return {
       ...basicData,
       titleJapanese: anime.title_japanese,
@@ -229,12 +253,13 @@ class JikanAPIService {
       popularity: anime.popularity,
       year: anime.year,
       season: anime.season,
-      broadcast: formatBroadcast(anime.broadcast),
-      producers: anime.producers?.map(p => p.name) || [],
-      studios: anime.studios?.map(s => s.name) || [],
-      genres: anime.genres?.map(g => g.name) || [],
-      themes: anime.themes?.map(t => t.name) || [],
-      demographics: anime.demographics?.map(d => d.name) || [],
+      broadcast: anime.broadcast?.day && anime.broadcast?.time ? 
+        `${anime.broadcast.day}s at ${anime.broadcast.time}` : null,
+      producers: anime.producers?.map(p => p.name) ?? [],
+      studios: anime.studios?.map(s => s.name) ?? [],
+      genres: anime.genres?.map(g => g.name) ?? [],
+      themes: anime.themes?.map(t => t.name) ?? [],
+      demographics: anime.demographics?.map(d => d.name) ?? [],
       duration: anime.duration,
       ageRating: anime.rating,
       aired: anime.aired,
@@ -267,8 +292,7 @@ class JikanAPIService {
 
   private transformMangaData(manga: any): MangaItem {
     const status = manga.publishing ? 'Publishing' : 
-                   manga.status === 'Not yet published' ? 'Not yet published' :
-                   manga.status === 'Discontinued' ? 'Discontinued' : 'Finished';
+                   MANGA_STATUS_MAP[manga.status as keyof typeof MANGA_STATUS_MAP] ?? 'Finished';
 
     return {
       id: manga.mal_id,
@@ -284,9 +308,9 @@ class JikanAPIService {
     };
   }
 
-  private async fetchAnime(endpoint: string, limit = 20, searchQuery?: string): Promise<AnimeItem[]> {
+  private async fetchAnime(endpoint: string, limit = DEFAULT_LIMIT, searchQuery?: string): Promise<AnimeItem[]> {
     const separator = endpoint.includes('?') ? '&' : '?';
-    const apiLimit = Math.min(limit, 25);
+    const apiLimit = Math.min(limit, MAX_LIMIT);
     const response = await this.makeRequest(`${endpoint}${separator}limit=${apiLimit}`);
     let transformed = response.data.map(anime => this.transformAnimeData(anime));
     transformed = this.removeDuplicates(transformed);
@@ -301,7 +325,6 @@ class JikanAPIService {
   private sortByRelevance(animeList: AnimeItem[], query: string): AnimeItem[] {
     const queryLower = query.toLowerCase();
     
-    // Pre-compute scores to avoid recalculation during sort
     const scoredItems = animeList.map(anime => {
       const titleLower = anime.title.toLowerCase();
       const descLower = anime.description.toLowerCase();
@@ -313,7 +336,6 @@ class JikanAPIService {
       return { anime, relevanceScore, totalScore };
     });
     
-    // Sort by precomputed scores
     return scoredItems
       .sort((a, b) => {
         if (a.relevanceScore === 0 && b.relevanceScore > 0) return 1;
@@ -332,22 +354,22 @@ class JikanAPIService {
       score += 1000;
     }
     else if (title.startsWith(query)) {
-      score += isShortQuery ? 800 : 500; // Higher score for short queries
+      score += isShortQuery ? 800 : 500;
     }
     else if (title.includes(` ${query} `) || title.includes(` ${query}`) || title.includes(`${query} `)) {
       score += isShortQuery ? 600 : 300;
     }
     else if (title.includes(query)) {
-      score += isShortQuery ? 400 : 200; // Much higher for short queries
+      score += isShortQuery ? 400 : 200;
     }
     
     if (description.includes(query)) {
       const matches = (description.match(new RegExp(query, 'g')) || []).length;
-      score += matches * 5; // Reduced from 10 to 5
+      score += matches * 5;
     }
     
     if (title.length < 50 && title.includes(query)) {
-      score += isShortQuery ? 100 : 50; // Higher bonus for short queries
+      score += isShortQuery ? 100 : 50;
     }
     
     const queryWords = query.split(' ').filter(word => word.length > 2);
@@ -356,7 +378,7 @@ class JikanAPIService {
         score += 25;
       }
       if (description.includes(word)) {
-        score += 2; // Reduced from 5 to 2
+        score += 2;
       }
     }
     
@@ -375,51 +397,49 @@ class JikanAPIService {
     }
     
     if (anime.favorites >= 100000) {
-      score += 2000; // Mega popular (like Naruto, AoT)
+      score += 2000;
     } else if (anime.favorites >= 50000) {
-      score += 1500; // Very popular
+      score += 1500;
     } else if (anime.favorites >= 10000) {
-      score += 1000; // Popular
+      score += 1000;
     } else if (anime.favorites >= 5000) {
-      score += 500;  // Well-known
+      score += 500;
     } else if (anime.favorites >= 1000) {
-      score += 200;  // Moderately known
+      score += 200;
     }
     
     if (anime.rating >= 9.0) {
-      score += 500; // Masterpiece tier
+      score += 500;
     } else if (anime.rating >= 8.5) {
-      score += 300; // Excellent
+      score += 300;
     } else if (anime.rating >= 8.0) {
-      score += 200; // Very good
+      score += 200;
     }
     
     return score;
   }
 
-  getCurrentlyAiring(limit = 20) { return this.fetchAnime('/seasons/now', limit); }
-  getTopAnime(limit = 20) { return this.fetchAnime('/top/anime', limit); }
-  getUpcomingAnime(limit = 20) { return this.fetchAnime('/seasons/upcoming', limit); }
+  getCurrentlyAiring(limit = DEFAULT_LIMIT) { return this.fetchAnime('/seasons/now', limit); }
+  getTopAnime(limit = DEFAULT_LIMIT) { return this.fetchAnime('/top/anime', limit); }
+  getUpcomingAnime(limit = DEFAULT_LIMIT) { return this.fetchAnime('/seasons/upcoming', limit); }
   
-  async getTopManga(limit = 20): Promise<MangaItem[]> {
-    const separator = '?';
-    const apiLimit = Math.min(limit, 25);
-    const response = await this.makeRequest(`/top/manga${separator}limit=${apiLimit}`);
+  async getTopManga(limit = DEFAULT_LIMIT): Promise<MangaItem[]> {
+    const apiLimit = Math.min(limit, MAX_LIMIT);
+    const response = await this.makeRequest(`/top/manga?limit=${apiLimit}`);
     let transformed = response.data.map((manga: any) => this.transformMangaData(manga));
-    const seen = new Set<number>();
-    transformed = transformed.filter(manga => !seen.has(manga.malId) && seen.add(manga.malId));
+    transformed = this.removeDuplicates(transformed);
     return transformed.slice(0, limit);
   }
   
-  getAnimeByGenre(genreId: number, limit = 20) {
+  getAnimeByGenre(genreId: number, limit = DEFAULT_LIMIT) {
     return this.fetchAnime(`/anime?genres=${genreId}&order_by=score&sort=desc`, limit);
   }
   
-  getAnimeByStatus(status: 'airing' | 'complete' | 'upcoming', limit = 20) {
+  getAnimeByStatus(status: 'airing' | 'complete' | 'upcoming', limit = DEFAULT_LIMIT) {
     return this.fetchAnime(`/anime?status=${status}&order_by=score&sort=desc`, limit);
   }
   
-  searchAnime(query: string, limit = 20) {
+  searchAnime(query: string, limit = DEFAULT_LIMIT) {
     return this.fetchAnime(`/anime?q=${encodeURIComponent(query)}`, limit, query);
   }
 
@@ -482,20 +502,18 @@ class JikanAPIService {
     }
 
     const endpoint = `/anime?${searchParams.toString()}`;
-    return this.fetchAnime(endpoint, params.limit || 24, params.query);
+    return this.fetchAnime(endpoint, params.limit ?? 24, params.query);
   }
 
   async getAnimeById(malId: number): Promise<DetailedAnimeItem> {
     const cached = this.cache.get(`/anime/${malId}`);
     const now = Date.now();
     
-    if (cached && (now - cached.timestamp) < this.cacheExpiry) {
+    if (cached && (now - cached.timestamp) < CACHE_EXPIRY) {
       return this.transformDetailedAnimeData((cached.data as JikanSingleResponse).data);
     }
 
-    const response = await fetch(`${JIKAN_BASE_URL}/anime/${malId}`);
-    if (!response.ok) throw new Error(`API error: ${response.status}`);
-    
+    const response = await this.fetchWithRetry(`${JIKAN_BASE_URL}/anime/${malId}`);
     const data = await response.json() as JikanSingleResponse;
     this.cache.set(`/anime/${malId}`, { data, timestamp: now });
     return this.transformDetailedAnimeData(data.data);
@@ -505,202 +523,103 @@ class JikanAPIService {
     const cached = this.cache.get('/genres/anime');
     const now = Date.now();
     
-    if (cached && (now - cached.timestamp) < this.cacheExpiry) {
-      console.log("Using cached data for: /genres/anime");
+    if (cached && (now - cached.timestamp) < CACHE_EXPIRY) {
       return (cached.data as any).data;
     }
 
-    // Apply rate limiting
     const timeSinceLastRequest = now - this.lastRequestTime;
-    if (timeSinceLastRequest < this.rateLimitDelay) {
-      const delay = this.rateLimitDelay - timeSinceLastRequest;
-      console.log(`Rate limiting genres: waiting ${delay}ms before request`);
-      await new Promise(resolve => setTimeout(resolve, delay));
+    if (timeSinceLastRequest < RATE_LIMIT_DELAY) {
+      await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY - timeSinceLastRequest));
     }
 
     const url = `${JIKAN_BASE_URL}/genres/anime`;
-    console.log("Making API request to:", url);
-    
     this.lastRequestTime = Date.now();
     
     try {
-      const response = await fetch(url);
-      
-      if (!response.ok) {
-        if (response.status === 429) {
-          console.warn(`Rate limited on ${url}, waiting 10 seconds before retry`);
-          await new Promise(resolve => setTimeout(resolve, 10000));
-          this.lastRequestTime = Date.now();
-          const retryResponse = await fetch(url);
-          if (!retryResponse.ok) {
-            console.warn(`Retry also rate limited: ${retryResponse.status} for ${url}`);
-            // Return fallback genres instead of throwing error
-            return this.getFallbackGenres();
-          }
-          const retryData = await retryResponse.json();
-          this.cache.set('/genres/anime', { data: retryData, timestamp: Date.now() });
-          return retryData.data;
-        }
-        
-        if (response.status >= 500) {
-          console.warn(`Server error: ${response.status} for URL: ${url} - API temporarily unavailable`);
-          return this.getFallbackGenres();
-        }
-        
-        console.error(`API error: ${response.status} for URL: ${url}`);
-        throw new Error(`API error: ${response.status}`);
-      }
-      
+      const response = await this.fetchWithRetry(url);
       const data = await response.json();
-      console.log("API response received for genres");
       this.cache.set('/genres/anime', { data, timestamp: Date.now() });
       return data.data;
     } catch (error) {
-      if (error instanceof Error && (error.message.includes('Server error') || error.message.includes('rate limited'))) {
-        console.warn('Genres API request failed, using fallback data:', error.message);
-        return this.getFallbackGenres();
-      } else {
-        console.error('Genres API request failed:', error);
-        throw error;
-      }
+      return this.getFallbackGenres();
     }
   }
 
   private getFallbackGenres(): GenreItem[] {
-    // Common anime genres as fallback when API is unavailable
-    return [
-      { mal_id: 1, name: "Action", count: 0 },
-      { mal_id: 2, name: "Adventure", count: 0 },
-      { mal_id: 4, name: "Comedy", count: 0 },
-      { mal_id: 8, name: "Drama", count: 0 },
-      { mal_id: 10, name: "Fantasy", count: 0 },
-      { mal_id: 14, name: "Horror", count: 0 },
-      { mal_id: 16, name: "Magic", count: 0 },
-      { mal_id: 18, name: "Mecha", count: 0 },
-      { mal_id: 19, name: "Music", count: 0 },
-      { mal_id: 22, name: "Romance", count: 0 },
-      { mal_id: 23, name: "School", count: 0 },
-      { mal_id: 24, name: "Sci-Fi", count: 0 },
-      { mal_id: 27, name: "Shounen", count: 0 },
-      { mal_id: 29, name: "Space", count: 0 },
-      { mal_id: 30, name: "Sports", count: 0 },
-      { mal_id: 31, name: "Super Power", count: 0 },
-      { mal_id: 37, name: "Supernatural", count: 0 },
-      { mal_id: 38, name: "Military", count: 0 },
-      { mal_id: 39, name: "Police", count: 0 },
-      { mal_id: 40, name: "Psychological", count: 0 },
-    ];
+    return FALLBACK_GENRES;
   }
 
-  async searchCharacters(query: string, limit = 20): Promise<CharacterItem[]> {
+  async searchCharacters(query: string, limit = DEFAULT_LIMIT): Promise<CharacterItem[]> {
     try {
-      if (query.trim().length < 2) {
-        return [];
-      }
+      if (query.trim().length < 2) return [];
       
-      const separator = '?';
-      const endpoint = `/characters${separator}q=${encodeURIComponent(query)}&limit=${Math.min(limit, 25)}`;
+      const endpoint = `/characters?q=${encodeURIComponent(query)}&limit=${Math.min(limit, MAX_LIMIT)}`;
       const response = await this.makeRequest(endpoint);
       
-      if (!response.data || !Array.isArray(response.data)) {
-        console.warn('Invalid response format for characters search:', response);
-        return [];
-      }
+      if (!response.data || !Array.isArray(response.data)) return [];
       
-      let transformed = response.data.map((character: any) => this.transformCharacterData(character));
-      
-      transformed = transformed.sort((a, b) => (b.favorites || 0) - (a.favorites || 0));
+      const transformed = response.data
+        .map((character: any) => this.transformCharacterData(character))
+        .sort((a, b) => (b.favorites ?? 0) - (a.favorites ?? 0));
       
       return transformed.slice(0, limit);
     } catch (error) {
-      if (error instanceof Error && error.message.includes('Server error')) {
-        console.warn('Character search temporarily unavailable due to API server error');
-      } else {
-        console.error('Error searching characters:', error);
-      }
       return [];
     }
   }
 
-  async searchPeople(query: string, limit = 20): Promise<PersonItem[]> {
+  async searchPeople(query: string, limit = DEFAULT_LIMIT): Promise<PersonItem[]> {
     try {
-      if (query.trim().length < 2) {
-        return [];
-      }
+      if (query.trim().length < 2) return [];
       
-      const separator = '?';
-      const endpoint = `/people${separator}q=${encodeURIComponent(query)}&limit=${Math.min(limit, 25)}`;
+      const endpoint = `/people?q=${encodeURIComponent(query)}&limit=${Math.min(limit, MAX_LIMIT)}`;
       const response = await this.makeRequest(endpoint);
       
-      if (!response.data || !Array.isArray(response.data)) {
-        console.warn('Invalid response format for people search:', response);
-        return [];
-      }
+      if (!response.data || !Array.isArray(response.data)) return [];
       
-      let transformed = response.data.map((person: any) => this.transformPersonData(person));
-      
-      transformed = transformed.sort((a, b) => (b.favorites || 0) - (a.favorites || 0));
+      const transformed = response.data
+        .map((person: any) => this.transformPersonData(person))
+        .sort((a, b) => (b.favorites ?? 0) - (a.favorites ?? 0));
       
       return transformed.slice(0, limit);
     } catch (error) {
-      if (error instanceof Error && error.message.includes('Server error')) {
-        console.warn('People search temporarily unavailable due to API server error');
-      } else {
-        console.error('Error searching people:', error);
-      }
       return [];
     }
   }
 
-  async searchManga(query: string, limit = 20): Promise<MangaItem[]> {
+  async searchManga(query: string, limit = DEFAULT_LIMIT): Promise<MangaItem[]> {
     try {
-      if (query.trim().length < 2) {
-        return [];
-      }
+      if (query.trim().length < 2) return [];
       
-      const separator = '?';
-      const endpoint = `/manga${separator}q=${encodeURIComponent(query)}&limit=${Math.min(limit, 25)}`;
+      const endpoint = `/manga?q=${encodeURIComponent(query)}&limit=${Math.min(limit, MAX_LIMIT)}`;
       const response = await this.makeRequest(endpoint);
       
-      if (!response.data || !Array.isArray(response.data)) {
-        console.warn('Invalid response format for manga search:', response);
-        return [];
-      }
+      if (!response.data || !Array.isArray(response.data)) return [];
       
-      let transformed = response.data.map((manga: any) => this.transformMangaData(manga));
-      
-      transformed = transformed.sort((a, b) => {
-        const scoreA = (a.rating || 0) + Math.sqrt(a.favorites || 0) * 0.1;
-        const scoreB = (b.rating || 0) + Math.sqrt(b.favorites || 0) * 0.1;
-        return scoreB - scoreA;
-      });
+      const transformed = response.data
+        .map((manga: any) => this.transformMangaData(manga))
+        .sort((a, b) => {
+          const scoreA = (a.rating ?? 0) + Math.sqrt(a.favorites ?? 0) * 0.1;
+          const scoreB = (b.rating ?? 0) + Math.sqrt(b.favorites ?? 0) * 0.1;
+          return scoreB - scoreA;
+        });
       
       return transformed.slice(0, limit);
     } catch (error) {
-      if (error instanceof Error && error.message.includes('Server error')) {
-        console.warn('Manga search temporarily unavailable due to API server error');
-      } else {
-        console.error('Error searching manga:', error);
-      }
       return [];
     }
   }
 
-  async searchMultiCategory(query: string, category: SearchCategory, limit = 20): Promise<SearchItem[]> {
-    switch (category) {
-      case 'anime':
-        return this.searchAnime(query, limit);
-      case 'characters':
-        return this.searchCharacters(query, limit);
-      case 'people':
-        return this.searchPeople(query, limit);
-      case 'manga':
-        return this.searchManga(query, limit);
-      default:
-        return this.searchAnime(query, limit);
-    }
+  async searchMultiCategory(query: string, category: SearchCategory, limit = DEFAULT_LIMIT): Promise<SearchItem[]> {
+    const searchMethods = {
+      anime: () => this.searchAnime(query, limit),
+      characters: () => this.searchCharacters(query, limit),
+      people: () => this.searchPeople(query, limit),
+      manga: () => this.searchManga(query, limit)
+    };
+    
+    return searchMethods[category]?.() ?? this.searchAnime(query, limit);
   }
 }
 
 export const jikanAPI = new JikanAPIService();
-
