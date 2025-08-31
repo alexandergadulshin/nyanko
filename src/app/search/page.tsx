@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { FaStar, FaHeart, FaUser, FaBook } from "react-icons/fa";
+import { FaStar, FaHeart } from "react-icons/fa";
 import { jikanAPI, type SearchCategory, type SearchItem } from "~/utils/api";
 
 function SearchPageContent() {
@@ -133,7 +133,7 @@ function SearchPageContent() {
             <div className="mb-6">
               <h1 className="text-2xl font-bold text-white flex items-center space-x-2">
                 <span className="text-2xl">{getCategoryIcon(category)}</span>
-                <span>{getCategoryLabel(category)} Results for "{query}"</span>
+                <span>{getCategoryLabel(category)} Results for &ldquo;{query}&rdquo;</span>
               </h1>
               {!loading && results.length > 0 && (
                 <p className="text-gray-400 mt-1">

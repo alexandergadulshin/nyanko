@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
-import { FaArrowLeft, FaEdit, FaPlus, FaSearch, FaTimes, FaHeart, FaCamera } from "react-icons/fa";
+import { FaArrowLeft, FaEdit, FaPlus, FaSearch, FaTimes, FaHeart, FaCamera, FaUserPlus, FaUserCheck, FaSpinner, FaTrash, FaCheck, FaBan } from "react-icons/fa";
 import ProfilePictureUpload from "~/components/profile/profile-picture-upload";
 import { jikanAPI } from "~/utils/api";
 
@@ -52,6 +52,14 @@ interface SearchAnime {
   description: string;
 }
 
+interface FriendshipStatus {
+  status: "self" | "friends" | "request_sent" | "request_received" | "not_accepting" | "none";
+  friendshipId?: string;
+  requestId?: string;
+  canSendRequest?: boolean;
+  message: string;
+}
+
 export default function ProfilePage({ params }: { params: Promise<{ userId: string }> }) {
   // Hide the main navbar for profile pages
   React.useEffect(() => {
@@ -90,6 +98,10 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchAnime[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
+  
+  // Friend management state
+  const [friendshipStatus, setFriendshipStatus] = useState<FriendshipStatus | null>(null);
+  const [friendActionLoading, setFriendActionLoading] = useState(false);
 
   const isOwnProfile = user?.id === resolvedParams.userId;
 
@@ -102,6 +114,125 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
       }
     } catch (err) {
       console.error("Error fetching favorites:", err);
+    }
+  };
+
+  const fetchFriendshipStatus = async () => {
+    if (isOwnProfile || !user) return;
+    
+    try {
+      const response = await fetch(`/api/friends/status/${resolvedParams.userId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setFriendshipStatus(data);
+      }
+    } catch (err) {
+      console.error("Error fetching friendship status:", err);
+    }
+  };
+
+  const sendFriendRequest = async () => {
+    if (!friendshipStatus?.canSendRequest) return;
+    
+    setFriendActionLoading(true);
+    try {
+      const response = await fetch('/api/friends/requests', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          toUserId: resolvedParams.userId,
+        }),
+      });
+
+      if (response.ok) {
+        await fetchFriendshipStatus(); // Refresh status
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Failed to send friend request');
+      }
+    } catch (err) {
+      console.error('Error sending friend request:', err);
+      setError('Failed to send friend request');
+    } finally {
+      setFriendActionLoading(false);
+    }
+  };
+
+  const respondToFriendRequest = async (action: 'accept' | 'decline') => {
+    if (!friendshipStatus?.requestId) return;
+    
+    setFriendActionLoading(true);
+    try {
+      const response = await fetch('/api/friends/requests', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          requestId: friendshipStatus.requestId,
+          action,
+        }),
+      });
+
+      if (response.ok) {
+        await fetchFriendshipStatus(); // Refresh status
+      } else {
+        const data = await response.json();
+        setError(data.error || `Failed to ${action} friend request`);
+      }
+    } catch (err) {
+      console.error(`Error ${action}ing friend request:`, err);
+      setError(`Failed to ${action} friend request`);
+    } finally {
+      setFriendActionLoading(false);
+    }
+  };
+
+  const cancelFriendRequest = async () => {
+    if (!friendshipStatus?.requestId) return;
+    
+    setFriendActionLoading(true);
+    try {
+      const response = await fetch(`/api/friends/requests?requestId=${friendshipStatus.requestId}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        await fetchFriendshipStatus(); // Refresh status
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Failed to cancel friend request');
+      }
+    } catch (err) {
+      console.error('Error cancelling friend request:', err);
+      setError('Failed to cancel friend request');
+    } finally {
+      setFriendActionLoading(false);
+    }
+  };
+
+  const removeFriend = async () => {
+    if (!friendshipStatus?.friendshipId || !confirm('Are you sure you want to remove this friend?')) return;
+    
+    setFriendActionLoading(true);
+    try {
+      const response = await fetch(`/api/friends/${friendshipStatus.friendshipId}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        await fetchFriendshipStatus(); // Refresh status
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Failed to remove friend');
+      }
+    } catch (err) {
+      console.error('Error removing friend:', err);
+      setError('Failed to remove friend');
+    } finally {
+      setFriendActionLoading(false);
     }
   };
 
@@ -119,6 +250,13 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
         }
         
         const data = await response.json();
+        
+        // If it's the user's own profile and they don't have a username, redirect to onboarding
+        if (isOwnProfile && (!data.profile.username || !data.profile.name)) {
+          router.push("/onboarding");
+          return;
+        }
+        
         setProfile(data.profile);
         setAnimeList(data.animeList || []);
         
@@ -133,6 +271,9 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
         // Fetch favorites if it's the user's own profile
         if (isOwnProfile) {
           await fetchFavorites();
+        } else {
+          // Fetch friendship status if viewing someone else's profile
+          await fetchFriendshipStatus();
         }
       } catch (err) {
         console.error("Error fetching profile:", err);
@@ -473,7 +614,7 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
                     <>
                       <div className="flex items-center gap-3 mb-2">
                         <h1 className="text-3xl font-bold text-white">{profile.name}</h1>
-                        {isOwnProfile && (
+                        {isOwnProfile ? (
                           <button
                             onClick={() => router.push('/settings')}
                             className="text-gray-400 hover:text-white p-1 hover:bg-gray-700/40 rounded transition-colors duration-200"
@@ -481,6 +622,97 @@ export default function ProfilePage({ params }: { params: Promise<{ userId: stri
                           >
                             <FaEdit className="w-4 h-4" />
                           </button>
+                        ) : friendshipStatus && (
+                          <div className="flex items-center gap-2">
+                            {friendshipStatus.status === 'friends' && (
+                              <>
+                                <span className="flex items-center gap-1 text-green-400 text-sm">
+                                  <FaUserCheck className="w-4 h-4" />
+                                  Friends
+                                </span>
+                                <button
+                                  onClick={removeFriend}
+                                  disabled={friendActionLoading}
+                                  className="text-gray-400 hover:text-red-400 p-1 hover:bg-red-500/20 rounded transition-colors duration-200"
+                                  title="Remove Friend"
+                                >
+                                  {friendActionLoading ? (
+                                    <FaSpinner className="w-4 h-4 animate-spin" />
+                                  ) : (
+                                    <FaTrash className="w-4 h-4" />
+                                  )}
+                                </button>
+                              </>
+                            )}
+                            
+                            {friendshipStatus.status === 'request_sent' && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-yellow-400 text-sm">Request Sent</span>
+                                <button
+                                  onClick={cancelFriendRequest}
+                                  disabled={friendActionLoading}
+                                  className="text-gray-400 hover:text-red-400 p-1 hover:bg-red-500/20 rounded transition-colors duration-200"
+                                  title="Cancel Request"
+                                >
+                                  {friendActionLoading ? (
+                                    <FaSpinner className="w-4 h-4 animate-spin" />
+                                  ) : (
+                                    <FaTimes className="w-4 h-4" />
+                                  )}
+                                </button>
+                              </div>
+                            )}
+                            
+                            {friendshipStatus.status === 'request_received' && (
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => respondToFriendRequest('accept')}
+                                  disabled={friendActionLoading}
+                                  className="bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded text-sm transition-colors flex items-center gap-1"
+                                  title="Accept Friend Request"
+                                >
+                                  {friendActionLoading ? (
+                                    <FaSpinner className="w-3 h-3 animate-spin" />
+                                  ) : (
+                                    <FaCheck className="w-3 h-3" />
+                                  )}
+                                  Accept
+                                </button>
+                                <button
+                                  onClick={() => respondToFriendRequest('decline')}
+                                  disabled={friendActionLoading}
+                                  className="bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded text-sm transition-colors flex items-center gap-1"
+                                  title="Decline Friend Request"
+                                >
+                                  <FaTimes className="w-3 h-3" />
+                                  Decline
+                                </button>
+                              </div>
+                            )}
+                            
+                            {friendshipStatus.status === 'none' && friendshipStatus.canSendRequest && (
+                              <button
+                                onClick={sendFriendRequest}
+                                disabled={friendActionLoading}
+                                className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded text-sm transition-colors flex items-center gap-1"
+                                title="Send Friend Request"
+                              >
+                                {friendActionLoading ? (
+                                  <FaSpinner className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <FaUserPlus className="w-3 h-3" />
+                                )}
+                                Add Friend
+                              </button>
+                            )}
+                            
+                            {friendshipStatus.status === 'not_accepting' && (
+                              <span className="flex items-center gap-1 text-gray-500 text-sm">
+                                <FaBan className="w-4 h-4" />
+                                Not accepting requests
+                              </span>
+                            )}
+                          </div>
                         )}
                       </div>
                       {profile.username && (

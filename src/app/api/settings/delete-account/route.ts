@@ -2,16 +2,13 @@ import { type NextRequest, NextResponse } from "next/server";
 import { db } from "~/server/db";
 import { user, animeList, favorites } from "~/server/db/schema";
 import { eq } from "drizzle-orm";
-import { auth } from "~/lib/auth";
-import { headers } from "next/headers";
+import { auth } from "@clerk/nextjs/server";
 
 export async function DELETE(request: NextRequest) {
   try {
-    const session = await auth.api.getSession({
-      headers: await headers()
-    });
+    const { userId } = await auth();
 
-    if (!session?.user?.id) {
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -22,9 +19,9 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Delete user data in correct order (foreign key constraints)
-    await db.delete(favorites).where(eq(favorites.userId, session.user.id));
-    await db.delete(animeList).where(eq(animeList.userId, session.user.id));
-    await db.delete(user).where(eq(user.id, session.user.id));
+    await db.delete(favorites).where(eq(favorites.userId, userId));
+    await db.delete(animeList).where(eq(animeList.userId, userId));
+    await db.delete(user).where(eq(user.id, userId));
 
     return NextResponse.json({ message: "Account deleted successfully" });
   } catch (error) {

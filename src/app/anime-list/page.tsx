@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { useSession } from "~/lib/auth-client";
+import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { FaArrowLeft, FaPlus, FaSearch, FaFilter, FaEdit, FaTrash, FaMinus } from "react-icons/fa";
 import { jikanAPI } from "~/utils/api";
@@ -154,7 +154,7 @@ const AnimeListItemComponent = React.memo(({
 AnimeListItemComponent.displayName = 'AnimeListItemComponent';
 
 export default function AnimeListPage() {
-  const { data: session, isPending } = useSession();
+  const { user, isLoaded } = useUser();
   const router = useRouter();
   const [animeList, setAnimeList] = useState<AnimeListItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -180,7 +180,7 @@ export default function AnimeListPage() {
   const fetchAnimeList = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/profile/${session?.user?.id}`);
+      const response = await fetch(`/api/profile/${user?.id}`);
       
       if (!response.ok) {
         throw new Error("Failed to fetch anime list");
@@ -194,16 +194,19 @@ export default function AnimeListPage() {
     } finally {
       setLoading(false);
     }
-  }, [session?.user?.id]);
+  }, [user?.id]);
 
   useEffect(() => {
-    if (!isPending && session?.user?.id) {
+    if (isLoaded && user?.id) {
       void fetchAnimeList();
     }
-  }, [session, isPending, fetchAnimeList]);
+  }, [user?.id, isLoaded, fetchAnimeList]);
 
   const searchForAnime = useCallback(async () => {
-    if (!searchQuery.trim()) return;
+    if (!searchQuery.trim()) {
+      setSearchResults([]);
+      return;
+    }
     
     setSearchLoading(true);
     try {
@@ -216,6 +219,20 @@ export default function AnimeListPage() {
       setSearchLoading(false);
     }
   }, [searchQuery]);
+
+  // Auto-search as user types with debounce
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (searchQuery.trim()) {
+        searchForAnime();
+      } else {
+        setSearchResults([]);
+        setSearchLoading(false);
+      }
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery, searchForAnime]);
 
   const addAnimeToList = async (anime: SearchAnime, status: AnimeListItem["status"]) => {
     try {
@@ -505,7 +522,7 @@ export default function AnimeListPage() {
     }
   }, []);
 
-  if (isPending || loading) {
+  if (!isLoaded || loading) {
     return (
       <div className="min-h-screen bg-[#181622] light:bg-transparent flex items-center justify-center">
         <div className="text-center">
@@ -516,7 +533,7 @@ export default function AnimeListPage() {
     );
   }
 
-  if (!session) {
+  if (!user) {
     return (
       <div className="min-h-screen bg-[#181622] light:bg-transparent flex items-center justify-center">
         <div className="text-center">
@@ -631,15 +648,24 @@ export default function AnimeListPage() {
           ) : (
             <div className="bg-gray-800/60 backdrop-blur-sm rounded-2xl p-12 text-center border border-gray-700/30">
               {statusFilter === "all" ? (
-                <div className="space-y-4">
-                  <div className="text-6xl mb-4">📺</div>
-                  <h3 className="text-xl font-bold text-white mb-2">Your anime list is empty!</h3>
-                  <p className="text-gray-400 mb-6">Start building your collection by adding your first anime.</p>
+                <div className="space-y-6">
+                  <div className="w-20 h-20 mx-auto bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-full flex items-center justify-center border border-purple-500/30">
+                    <svg className="w-10 h-10 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-bold text-white mb-3">Your anime list is empty!</h3>
+                    <p className="text-gray-400 text-lg mb-8 max-w-md mx-auto">Start building your collection by adding your first anime and tracking your watching progress.</p>
+                  </div>
                   <button
                     onClick={() => setShowAddModal(true)}
-                    className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-8 py-3 rounded-xl font-semibold transition-all duration-200 hover:scale-105 shadow-lg hover:shadow-xl"
+                    className="group bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-10 py-4 rounded-xl font-semibold transition-all duration-200 hover:scale-105 shadow-lg hover:shadow-xl hover:shadow-purple-900/25"
                   >
-                    Add Your First Anime
+                    <div className="flex items-center space-x-3">
+                      <FaPlus className="w-5 h-5 group-hover:rotate-90 transition-transform duration-200" />
+                      <span>Add Your First Anime</span>
+                    </div>
                   </button>
                 </div>
               ) : (
@@ -657,7 +683,7 @@ export default function AnimeListPage() {
       {/* Add Anime Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-gray-800 rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-gray-800 rounded-xl w-full max-w-2xl max-h-[90vh] overflow-visible">
             <div className="p-6 border-b border-gray-700">
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-bold text-white">Add Anime to List</h2>
@@ -672,65 +698,103 @@ export default function AnimeListPage() {
             
             <div className="p-6">
               {/* Search */}
-              <div className="flex space-x-2 mb-4">
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search for anime..."
-                  className="flex-1 px-4 py-2 bg-gray-900/40 border border-gray-600/40 rounded text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-purple-500"
-                  onKeyDown={(e) => e.key === "Enter" && searchForAnime()}
-                />
-                <button
-                  onClick={searchForAnime}
-                  disabled={searchLoading}
-                  className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded flex items-center space-x-2 disabled:opacity-50"
-                >
-                  <FaSearch className="w-4 h-4" />
-                  <span>{searchLoading ? "Searching..." : "Search"}</span>
-                </button>
-              </div>
-
-              {/* Search Results */}
-              {searchResults.length > 0 && (
-                <div className="space-y-3">
-                  {searchResults.map((anime) => (
-                    <div key={anime.malId} className="flex items-center space-x-3 p-3 bg-gray-900/30 rounded-lg">
-                      <img
-                        src={anime.image}
-                        alt={anime.title}
-                        className="w-12 h-16 object-cover rounded"
-                      />
-                      <div className="flex-1">
-                        <h4 className="text-white font-medium text-sm">{anime.title}</h4>
-                        <p className="text-gray-400 text-xs">
-                          Episodes: {anime.episodes ?? "Unknown"}
-                        </p>
-                      </div>
-                      <div className="flex space-x-1">
-                        <button
-                          onClick={() => addAnimeToList(anime, "planning")}
-                          className="px-2 py-1 bg-gray-500 hover:bg-gray-400 text-white text-xs rounded"
-                        >
-                          Plan
-                        </button>
-                        <button
-                          onClick={() => addAnimeToList(anime, "watching")}
-                          className="px-2 py-1 bg-blue-500 hover:bg-blue-400 text-white text-xs rounded"
-                        >
-                          Watch
-                        </button>
-                        <button
-                          onClick={() => addAnimeToList(anime, "completed")}
-                          className="px-2 py-1 bg-green-500 hover:bg-green-400 text-white text-xs rounded"
-                        >
-                          Completed
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+              <div className="relative">
+                <div className="flex space-x-2 mb-4">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search for anime..."
+                    className="flex-1 px-4 py-2 bg-gray-900/40 border border-gray-600/40 rounded text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                  />
+                  <button
+                    onClick={searchForAnime}
+                    disabled={searchLoading}
+                    className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded flex items-center space-x-2 disabled:opacity-50"
+                  >
+                    <FaSearch className="w-4 h-4" />
+                    <span>{searchLoading ? "Searching..." : "Search"}</span>
+                  </button>
                 </div>
-              )}
+
+                {/* Live Search Results */}
+                {(searchLoading || searchResults.length > 0) && searchQuery.trim() && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-gray-800/95 backdrop-blur-md border border-gray-600/50 rounded-lg shadow-2xl z-[60] max-h-80 overflow-y-auto">
+                    {searchLoading && (
+                      <div className="p-4 text-center">
+                        <div className="flex items-center justify-center space-x-2 text-gray-400">
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-500"></div>
+                          <span className="text-sm">Searching anime...</span>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {!searchLoading && searchResults.length > 0 && (
+                      <div className="divide-y divide-gray-700/30">
+                        {searchResults.map((anime) => (
+                          <div key={anime.malId} className="flex items-center space-x-3 p-3 hover:bg-gray-700/30 transition-colors">
+                            <img
+                              src={anime.image}
+                              alt={anime.title}
+                              className="w-10 h-14 object-cover rounded border border-gray-600/40"
+                              onError={(e) => {
+                                e.currentTarget.src = `https://via.placeholder.com/40x56/4f356b/ffffff?text=?`;
+                              }}
+                            />
+                            <div className="flex-1 min-w-0">
+                              <h4 className="text-white font-medium text-sm truncate">{anime.title}</h4>
+                              <p className="text-gray-400 text-xs">
+                                Episodes: {anime.episodes ?? "Unknown"}
+                              </p>
+                            </div>
+                            <div className="flex space-x-1">
+                              <button
+                                onClick={() => {
+                                  addAnimeToList(anime, "planning");
+                                  setSearchQuery("");
+                                  setSearchResults([]);
+                                }}
+                                className="px-2 py-1 bg-gray-500 hover:bg-gray-400 text-white text-xs rounded transition-colors"
+                                title="Add to Plan to Watch"
+                              >
+                                Plan
+                              </button>
+                              <button
+                                onClick={() => {
+                                  addAnimeToList(anime, "watching");
+                                  setSearchQuery("");
+                                  setSearchResults([]);
+                                }}
+                                className="px-2 py-1 bg-blue-500 hover:bg-blue-400 text-white text-xs rounded transition-colors"
+                                title="Add to Watching"
+                              >
+                                Watch
+                              </button>
+                              <button
+                                onClick={() => {
+                                  addAnimeToList(anime, "completed");
+                                  setSearchQuery("");
+                                  setSearchResults([]);
+                                }}
+                                className="px-2 py-1 bg-green-500 hover:bg-green-400 text-white text-xs rounded transition-colors"
+                                title="Add as Completed"
+                              >
+                                Done
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {!searchLoading && searchResults.length === 0 && searchQuery.trim() && (
+                      <div className="p-4 text-center text-gray-400 text-sm">
+                        No anime found for &ldquo;{searchQuery}&rdquo;
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

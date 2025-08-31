@@ -1,21 +1,17 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
-import { useSession } from "~/lib/auth-client";
+import React, { useState, useEffect } from "react";
+import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useTheme } from "~/hooks/use-theme";
+import { UploadButton } from "~/lib/uploadthing";
 import { 
   FaUser, 
-  FaBell, 
   FaEye, 
   FaShieldAlt, 
   FaSave, 
-  FaEdit, 
   FaTrash,
-  FaGlobe,
   FaPalette,
-  FaUpload,
-  FaCamera,
   FaCheck,
   FaTimes,
   FaSpinner
@@ -27,12 +23,9 @@ interface UserSettings {
   bio: string;
   profileImage: string;
   email: string;
-  notifications: {
-    email: boolean;
-    newEpisodes: boolean;
-    recommendations: boolean;
-    listUpdates: boolean;
-  };
+  allowFriendRequests: boolean;
+  lastNameChange?: string;
+  lastUsernameChange?: string;
   privacy: {
     profileVisibility: 'public' | 'friends' | 'private';
     showWatchList: boolean;
@@ -42,37 +35,57 @@ interface UserSettings {
   preferences: {
     language: string;
     theme: 'dark' | 'light' | 'auto';
-    defaultListStatus: 'planning' | 'watching' | 'completed' | 'dropped' | 'paused';
     autoMarkCompleted: boolean;
     spoilerWarnings: boolean;
   };
 }
 
 export default function SettingsPage() {
-  const { data: session, error } = useSession();
+  const { user, isLoaded } = useUser();
   const router = useRouter();
   const { theme, toggleTheme } = useTheme();
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [activeTab, setActiveTab] = useState<'profile' | 'notifications' | 'privacy' | 'preferences' | 'account'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'privacy' | 'preferences' | 'account'>('profile');
   const [loading, setLoading] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
-  const [imageUploading, setImageUploading] = useState(false);
   const [usernameChecking, setUsernameChecking] = useState(false);
   const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [originalSettings, setOriginalSettings] = useState<{name: string, username: string}>({name: '', username: ''});
+
+  // Helper functions for rate limiting
+  const canChangeName = () => {
+    if (!settings.lastNameChange) return true;
+    const lastChange = new Date(settings.lastNameChange);
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    return lastChange <= oneDayAgo;
+  };
+
+  const canChangeUsername = () => {
+    if (!settings.lastUsernameChange) return true;
+    const lastChange = new Date(settings.lastUsernameChange);
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    return lastChange <= sevenDaysAgo;
+  };
+
+  const getNextNameChangeDate = () => {
+    if (!settings.lastNameChange) return null;
+    const lastChange = new Date(settings.lastNameChange);
+    return new Date(lastChange.getTime() + 24 * 60 * 60 * 1000);
+  };
+
+  const getNextUsernameChangeDate = () => {
+    if (!settings.lastUsernameChange) return null;
+    const lastChange = new Date(settings.lastUsernameChange);
+    return new Date(lastChange.getTime() + 7 * 24 * 60 * 60 * 1000);
+  };
   const [settings, setSettings] = useState<UserSettings>({
     displayName: '',
     username: '',
     bio: '',
     profileImage: '',
     email: '',
-    notifications: {
-      email: true,
-      newEpisodes: true,
-      recommendations: false,
-      listUpdates: true,
-    },
+    allowFriendRequests: true,
     privacy: {
       profileVisibility: 'public',
       showWatchList: true,
@@ -82,14 +95,15 @@ export default function SettingsPage() {
     preferences: {
       language: 'en',
       theme: theme,
-      defaultListStatus: 'planning',
       autoMarkCompleted: false,
       spoilerWarnings: true,
     },
   });
 
   useEffect(() => {
-    if (error || !session) {
+    if (!isLoaded) return;
+    
+    if (!user) {
       router.push('/auth');
       return;
     }
@@ -105,17 +119,40 @@ export default function SettingsPage() {
             displayName: data.user.name || '',
             username: data.user.username || '',
             bio: data.user.bio || '',
-            email: data.user.email || '',
-            profileImage: data.user.image || '',
+            email: data.user.email || user.emailAddresses[0]?.emailAddress || '',
+            profileImage: data.user.image || user.imageUrl || '',
+            allowFriendRequests: data.user.allowFriendRequests !== undefined ? data.user.allowFriendRequests : true,
+            lastNameChange: data.user.lastNameChange,
+            lastUsernameChange: data.user.lastUsernameChange,
+            privacy: {
+              ...prev.privacy,
+              profileVisibility: data.user.profileVisibility || 'public',
+              showWatchList: data.user.showWatchList !== undefined ? data.user.showWatchList : true,
+              showFavorites: data.user.showFavorites !== undefined ? data.user.showFavorites : true,
+              showStats: data.user.showStats !== undefined ? data.user.showStats : true,
+            },
           }));
+          
+          // Store original values for comparison
+          setOriginalSettings({
+            name: data.user.name || '',
+            username: data.user.username || '',
+          });
         }
       } catch (err) {
         console.error('Failed to load settings:', err);
+        // Fallback to Clerk data
+        setSettings(prev => ({
+          ...prev,
+          displayName: user.fullName || '',
+          email: user.emailAddresses[0]?.emailAddress || '',
+          profileImage: user.imageUrl || '',
+        }));
       }
     };
 
     loadSettings();
-  }, [session, error, router]);
+  }, [user, isLoaded, router]);
 
   const handleSave = async () => {
     setLoading(true);
@@ -132,6 +169,11 @@ export default function SettingsPage() {
           username: settings.username,
           bio: settings.bio,
           image: settings.profileImage,
+          profileVisibility: settings.privacy.profileVisibility,
+          showWatchList: settings.privacy.showWatchList,
+          showFavorites: settings.privacy.showFavorites,
+          showStats: settings.privacy.showStats,
+          allowFriendRequests: settings.allowFriendRequests,
         }),
       });
 
@@ -139,6 +181,25 @@ export default function SettingsPage() {
 
       if (!response.ok) {
         throw new Error(data.error || 'Failed to save settings');
+      }
+
+      // Immediately update rate limiting timestamps if changes were made
+      const now = new Date().toISOString();
+      const nameChanged = settings.displayName !== originalSettings.name;
+      const usernameChanged = settings.username !== originalSettings.username;
+
+      if (nameChanged || usernameChanged) {
+        setSettings(prev => ({
+          ...prev,
+          lastNameChange: nameChanged ? now : prev.lastNameChange,
+          lastUsernameChange: usernameChanged ? now : prev.lastUsernameChange,
+        }));
+        
+        // Update original settings for future comparisons
+        setOriginalSettings({
+          name: settings.displayName,
+          username: settings.username,
+        });
       }
 
       setSaveMessage('Settings saved successfully!');
@@ -177,44 +238,48 @@ export default function SettingsPage() {
     }
   };
 
-  const handleImageUpload = async (file: File) => {
-    setImageUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append('image', file);
+  const handleImageUploadComplete = async (res: any) => {
+    if (res && res[0] && res[0].url) {
+      setSettings(prev => ({ ...prev, profileImage: res[0].url }));
+      
+      // Automatically save the uploaded image to database
+      try {
+        const response = await fetch('/api/settings', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            displayName: settings.displayName,
+            username: settings.username,
+            bio: settings.bio,
+            image: res[0].url,
+            profileVisibility: settings.privacy.profileVisibility,
+            showWatchList: settings.privacy.showWatchList,
+            showFavorites: settings.privacy.showFavorites,
+            showStats: settings.privacy.showStats,
+            allowFriendRequests: settings.allowFriendRequests,
+          }),
+        });
 
-      const response = await fetch('/api/upload/profile-image', {
-        method: 'POST',
-        body: formData,
-      });
+        if (!response.ok) {
+          throw new Error('Failed to save profile image');
+        }
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to upload image');
+        setSaveMessage('Profile image uploaded and saved successfully!');
+        setTimeout(() => setSaveMessage(null), 3000);
+      } catch (err) {
+        setSaveMessage('Image uploaded but failed to save to profile. Please click Save Changes.');
+        setTimeout(() => setSaveMessage(null), 5000);
       }
-
-      setSettings(prev => ({ ...prev, profileImage: data.imageUrl }));
-      setSaveMessage('Profile image uploaded successfully!');
-      setTimeout(() => setSaveMessage(null), 3000);
-    } catch (err) {
-      setSaveMessage(err instanceof Error ? err.message : 'Failed to upload image');
-      setTimeout(() => setSaveMessage(null), 3000);
-    } finally {
-      setImageUploading(false);
     }
   };
 
-  const handleImageClick = () => {
-    fileInputRef.current?.click();
+  const handleImageUploadError = (error: Error) => {
+    setSaveMessage(`Upload failed: ${error.message}`);
+    setTimeout(() => setSaveMessage(null), 3000);
   };
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      handleImageUpload(file);
-    }
-  };
 
 
   const handleDeleteAccount = async () => {
@@ -266,13 +331,12 @@ export default function SettingsPage() {
 
   const tabs = [
     { id: 'profile' as const, label: 'Profile', icon: <FaUser /> },
-    { id: 'notifications' as const, label: 'Notifications', icon: <FaBell /> },
     { id: 'privacy' as const, label: 'Privacy', icon: <FaEye /> },
     { id: 'preferences' as const, label: 'Preferences', icon: <FaPalette /> },
     { id: 'account' as const, label: 'Account', icon: <FaShieldAlt /> },
   ];
 
-  if (!session) {
+  if (!isLoaded || !user) {
     return (
       <div className="min-h-screen bg-[#181622] light:bg-transparent flex items-center justify-center">
         <div className="text-center">
@@ -330,74 +394,38 @@ export default function SettingsPage() {
                   
                   {/* Profile Image */}
                   <div className="flex items-center space-x-6">
-                    <div className="relative group">
-                      <div 
-                        className="relative cursor-pointer"
-                        onClick={handleImageClick}
-                      >
-                        {settings.profileImage ? (
-                          <img
-                            src={settings.profileImage}
-                            alt="Profile"
-                            className="w-36 h-36 rounded-full object-cover border-2 border-purple-500/30 shadow-lg"
-                            onError={(e) => {
-                              e.currentTarget.style.display = 'none';
-                              e.currentTarget.nextElementSibling.style.display = 'block';
-                            }}
-                          />
-                        ) : (
-                          <div className="w-36 h-36 rounded-full border-2 border-purple-500/30 bg-gray-700 shadow-lg"></div>
-                        )}
-                        {settings.profileImage && (
-                          <div className="w-36 h-36 rounded-full border-2 border-purple-500/30 bg-gray-700 shadow-lg hidden"></div>
-                        )}
-                        
-                        {/* Camera overlay */}
-                        <div className="absolute inset-0 bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center">
-                          <div className="text-center">
-                            {imageUploading ? (
-                              <FaSpinner className="w-5 h-5 text-white mx-auto mb-1 animate-spin" />
-                            ) : (
-                              <FaCamera className="w-5 h-5 text-white mx-auto mb-1" />
-                            )}
-                            <span className="text-white text-xs">
-                              {imageUploading ? 'Uploading...' : 'Change'}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
+                    <div className="relative">
+                      {settings.profileImage ? (
+                        <img
+                          src={settings.profileImage}
+                          alt="Profile"
+                          className="w-36 h-36 rounded-full object-cover border-2 border-purple-500/30 shadow-lg"
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                            e.currentTarget.nextElementSibling.style.display = 'block';
+                          }}
+                        />
+                      ) : (
+                        <div className="w-36 h-36 rounded-full border-2 border-purple-500/30 bg-gray-700 shadow-lg"></div>
+                      )}
+                      {settings.profileImage && (
+                        <div className="w-36 h-36 rounded-full border-2 border-purple-500/30 bg-gray-700 shadow-lg hidden"></div>
+                      )}
                     </div>
                     <div>
                       <h3 className="text-white font-semibold mb-2">Profile Picture</h3>
-                      <p className="text-gray-400 text-sm mb-3">Upload a new profile picture</p>
-                      <button 
-                        onClick={handleImageClick}
-                        disabled={imageUploading}
-                        className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm transition-colors"
-                      >
-                        {imageUploading ? (
-                          <>
-                            <FaSpinner className="inline mr-2 animate-spin" />
-                            Uploading...
-                          </>
-                        ) : (
-                          <>
-                            <FaUpload className="inline mr-2" />
-                            Upload Image
-                          </>
-                        )}
-                      </button>
+                      <p className="text-gray-400 text-sm mb-3">Upload a new profile picture (max 4MB)</p>
+                      <UploadButton
+                        endpoint="profileImage"
+                        onClientUploadComplete={handleImageUploadComplete}
+                        onUploadError={handleImageUploadError}
+                        appearance={{
+                          button: "bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm transition-colors ut-ready:bg-purple-600 ut-uploading:cursor-not-allowed ut-uploading:bg-purple-700",
+                          allowedContent: "text-gray-400 text-xs",
+                          container: "w-max flex-col items-center"
+                        }}
+                      />
                     </div>
-                    
-                    {/* Hidden file input */}
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/jpeg,image/jpg,image/png,image/webp"
-                      onChange={handleFileChange}
-                      className="hidden"
-                      disabled={imageUploading}
-                    />
                   </div>
 
                   {/* Basic Info */}
@@ -409,9 +437,24 @@ export default function SettingsPage() {
                       <input
                         type="text"
                         value={settings.displayName}
-                        onChange={(e) => handleInputChange('displayName' as keyof UserSettings, '', e.target.value)}
-                        className="w-full px-4 py-3 bg-[#6d28d9]/30 border border-purple-300/40 rounded-lg text-white placeholder-purple-200/60 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400"
+                        onChange={(e) => setSettings(prev => ({ ...prev, displayName: e.target.value }))}
+                        disabled={!canChangeName()}
+                        className={`w-full px-4 py-3 border rounded-lg text-white placeholder-purple-200/60 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400 ${
+                          canChangeName() 
+                            ? 'bg-[#6d28d9]/30 border-purple-300/40' 
+                            : 'bg-gray-600/30 border-gray-500/40 cursor-not-allowed opacity-60'
+                        }`}
                       />
+                      {!canChangeName() && (
+                        <p className="text-orange-400 text-xs mt-1">
+                          You can change your display name again on {getNextNameChangeDate()?.toLocaleDateString()}
+                        </p>
+                      )}
+                      {canChangeName() && (
+                        <p className="text-gray-400 text-xs mt-1">
+                          You can change your display name once per day
+                        </p>
+                      )}
                     </div>
 
                     <div>
@@ -423,29 +466,44 @@ export default function SettingsPage() {
                           type="text"
                           value={settings.username}
                           onChange={(e) => {
-                            handleInputChange('username' as keyof UserSettings, '', e.target.value);
+                            setSettings(prev => ({ ...prev, username: e.target.value }));
                             if (e.target.value !== settings.username) {
                               setTimeout(() => checkUsernameAvailability(e.target.value), 500);
                             }
                           }}
-                          className="w-full px-4 py-3 pr-10 bg-[#6d28d9]/30 border border-purple-300/40 rounded-lg text-white placeholder-purple-200/60 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400"
+                          disabled={!canChangeUsername()}
+                          className={`w-full px-4 py-3 pr-10 border rounded-lg text-white placeholder-purple-200/60 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400 ${
+                            canChangeUsername() 
+                              ? 'bg-[#6d28d9]/30 border-purple-300/40' 
+                              : 'bg-gray-600/30 border-gray-500/40 cursor-not-allowed opacity-60'
+                          }`}
                           placeholder="Choose a unique username"
                         />
                         <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
-                          {usernameChecking ? (
+                          {canChangeUsername() && usernameChecking ? (
                             <FaSpinner className="w-4 h-4 text-gray-400 animate-spin" />
-                          ) : usernameAvailable === true ? (
+                          ) : canChangeUsername() && usernameAvailable === true ? (
                             <FaCheck className="w-4 h-4 text-green-400" />
-                          ) : usernameAvailable === false ? (
+                          ) : canChangeUsername() && usernameAvailable === false ? (
                             <FaTimes className="w-4 h-4 text-red-400" />
                           ) : null}
                         </div>
                       </div>
-                      {usernameAvailable === false && (
+                      {!canChangeUsername() && (
+                        <p className="text-orange-400 text-xs mt-1">
+                          You can change your username again on {getNextUsernameChangeDate()?.toLocaleDateString()}
+                        </p>
+                      )}
+                      {canChangeUsername() && usernameAvailable === false && (
                         <p className="text-red-400 text-xs mt-1">Username is already taken</p>
                       )}
-                      {usernameAvailable === true && (
+                      {canChangeUsername() && usernameAvailable === true && (
                         <p className="text-green-400 text-xs mt-1">Username is available</p>
+                      )}
+                      {canChangeUsername() && !usernameAvailable && (
+                        <p className="text-gray-400 text-xs mt-1">
+                          You can change your username once every 7 days
+                        </p>
                       )}
                     </div>
                   </div>
@@ -456,7 +514,7 @@ export default function SettingsPage() {
                     </label>
                     <textarea
                       value={settings.bio}
-                      onChange={(e) => handleInputChange('bio' as keyof UserSettings, '', e.target.value)}
+                      onChange={(e) => setSettings(prev => ({ ...prev, bio: e.target.value }))}
                       rows={4}
                       className="w-full px-4 py-3 bg-[#6d28d9]/30 border border-purple-300/40 rounded-lg text-white placeholder-purple-200/60 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400 resize-none"
                       placeholder="Tell us about yourself..."
@@ -465,44 +523,17 @@ export default function SettingsPage() {
                 </div>
               )}
 
-              {/* Notifications Tab */}
-              {activeTab === 'notifications' && (
-                <div className="space-y-6">
-                  <h2 className="text-2xl font-bold text-white mb-6">Notification Settings</h2>
-                  
-                  <div className="space-y-4">
-                    {Object.entries(settings.notifications).map(([key, value]) => (
-                      <div key={key} className="flex items-center justify-between p-4 bg-[#6d28d9]/20 rounded-lg">
-                        <div>
-                          <h3 className="text-white font-medium capitalize">
-                            {key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
-                          </h3>
-                          <p className="text-gray-400 text-sm">
-                            {key === 'email' && 'Receive email notifications'}
-                            {key === 'newEpisodes' && 'Get notified when new episodes are released'}
-                            {key === 'recommendations' && 'Receive personalized anime recommendations'}
-                            {key === 'listUpdates' && 'Get notified about your list updates'}
-                          </p>
-                        </div>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={value}
-                            onChange={(e) => handleInputChange('notifications', key, e.target.checked)}
-                            className="sr-only peer"
-                          />
-                          <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
-                        </label>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               {/* Privacy Tab */}
               {activeTab === 'privacy' && (
                 <div className="space-y-6">
-                  <h2 className="text-2xl font-bold text-white mb-6">Privacy Settings</h2>
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-2xl font-bold text-white mb-6">Privacy Settings</h2>
+                    {saveMessage && (
+                      <div className={`text-sm px-3 py-1 rounded-full ${saveMessage.includes('success') ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                        {saveMessage}
+                      </div>
+                    )}
+                  </div>
                   
                   <div>
                     <label className="block text-sm font-medium text-purple-200 mb-2">
@@ -511,11 +542,18 @@ export default function SettingsPage() {
                     <select
                       value={settings.privacy.profileVisibility}
                       onChange={(e) => handleInputChange('privacy', 'profileVisibility', e.target.value)}
-                      className="w-full px-4 py-3 bg-[#6d28d9]/30 border border-purple-300/40 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-400"
+                      className="w-full px-4 py-3 bg-[#6d28d9]/30 border border-purple-300/40 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400"
+                      style={{ 
+                        backgroundImage: `url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%23a855f7' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E")`,
+                        backgroundPosition: 'right 12px center',
+                        backgroundRepeat: 'no-repeat',
+                        backgroundSize: '16px',
+                        appearance: 'none'
+                      }}
                     >
-                      <option value="public">Public - Anyone can see your profile</option>
-                      <option value="friends">Friends Only - Only friends can see your profile</option>
-                      <option value="private">Private - Only you can see your profile</option>
+                      <option value="public" className="bg-gray-800 text-white">Public - Anyone can see your profile</option>
+                      <option value="friends" className="bg-gray-800 text-white">Friends Only - Only friends can see your profile</option>
+                      <option value="private" className="bg-gray-800 text-white">Private - Only you can see your profile</option>
                     </select>
                   </div>
 
@@ -539,10 +577,27 @@ export default function SettingsPage() {
                             onChange={(e) => handleInputChange('privacy', key, e.target.checked)}
                             className="sr-only peer"
                           />
-                          <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                          <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all duration-300 peer-checked:bg-purple-600 hover:bg-gray-500"></div>
                         </label>
                       </div>
                     ))}
+                    
+                    {/* Friend Requests Setting */}
+                    <div className="flex items-center justify-between p-4 bg-[#6d28d9]/20 rounded-lg">
+                      <div>
+                        <h3 className="text-white font-medium">Allow Friend Requests</h3>
+                        <p className="text-gray-400 text-sm">Allow other users to send you friend requests</p>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={settings.allowFriendRequests}
+                          onChange={(e) => setSettings(prev => ({ ...prev, allowFriendRequests: e.target.checked }))}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all duration-300 peer-checked:bg-purple-600 hover:bg-gray-500"></div>
+                      </label>
+                    </div>
                   </div>
                 </div>
               )}
@@ -584,22 +639,6 @@ export default function SettingsPage() {
                       </select>
                     </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-purple-200 mb-2">
-                        Default List Status
-                      </label>
-                      <select
-                        value={settings.preferences.defaultListStatus}
-                        onChange={(e) => handleInputChange('preferences', 'defaultListStatus', e.target.value)}
-                        className="w-full px-4 py-3 bg-[#6d28d9]/30 border border-purple-300/40 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-400"
-                      >
-                        <option value="planning">Planning to Watch</option>
-                        <option value="watching">Currently Watching</option>
-                        <option value="completed">Completed</option>
-                        <option value="dropped">Dropped</option>
-                        <option value="paused">Paused</option>
-                      </select>
-                    </div>
                   </div>
 
                   <div className="space-y-4">
@@ -651,7 +690,7 @@ export default function SettingsPage() {
                       <input
                         type="email"
                         value={settings.email}
-                        onChange={(e) => handleInputChange('email' as keyof UserSettings, '', e.target.value)}
+                        onChange={(e) => setSettings(prev => ({ ...prev, email: e.target.value }))}
                         className="w-full px-4 py-3 bg-[#6d28d9]/30 border border-purple-300/40 rounded-lg text-white placeholder-purple-200/60 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400"
                       />
                     </div>

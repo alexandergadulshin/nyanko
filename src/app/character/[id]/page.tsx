@@ -4,8 +4,9 @@ import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { FaHeart, FaUser, FaArrowLeft } from "react-icons/fa";
 import { jikanAPI, type CharacterItem } from "~/utils/api";
+import { FavoriteButton } from "~/components/FavoriteButton";
 
-interface DetailedCharacterItem extends CharacterItem {
+interface DetailedCharacterItem extends Omit<CharacterItem, 'about'> {
   nameKanji: string | null;
   nicknames: string[];
   about: string | null;
@@ -177,11 +178,22 @@ export default function CharacterDetailPage() {
                   ))}
                 </div>
               )}
-              <div className="flex items-center space-x-4">
+              <div className="flex items-center justify-between">
                 <span className="flex items-center text-gray-400">
                   <FaUser className="mr-2" />
                   Character
                 </span>
+                <FavoriteButton
+                  type="characters"
+                  itemId={character.malId}
+                  itemTitle={character.name}
+                  itemImage={character.image}
+                  itemData={{
+                    nameKanji: character.nameKanji,
+                    favorites: character.favorites,
+                  }}
+                  className="ml-4"
+                />
               </div>
             </div>
 

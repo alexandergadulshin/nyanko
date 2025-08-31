@@ -12,12 +12,12 @@ export const TopAnimeCarousel = React.memo(() => {
 
   return (
     <div className="w-full relative">
-      <div className="flex items-center justify-between mb-6 px-4">
+      <div className="flex items-center justify-between mb-3 px-4">
         <h2 className="text-2xl font-bold">
-          <span style={{ color: '#fff', WebkitTextStroke: '0.35px #000000' }} className="light:[color:#fff] light:[-webkit-text-stroke:0.35px_#000000]">Top</span>
-          <span className="text-white light:text-gray-800"> </span>
-          <span style={{ color: '#fff', WebkitTextStroke: '0.35px #000000' }} className="light:[color:#fff] light:[-webkit-text-stroke:0.35px_#000000]">Rated</span>
-          <span className="text-white light:text-gray-800">:</span>
+          <span className="text-white light:text-black light:[-webkit-text-stroke:none]" style={{ WebkitTextStroke: '0.35px #000000' }}>Top</span>
+          <span className="text-white light:text-black"> </span>
+          <span className="text-white light:text-black light:[-webkit-text-stroke:none]" style={{ WebkitTextStroke: '0.35px #000000' }}>Rated</span>
+          <span className="text-white light:text-black">:</span>
           <span className="text-[#fbbf24] light:text-orange-600"> Anime</span>
         </h2>
       </div>
@@ -30,7 +30,6 @@ export const TopAnimeCarousel = React.memo(() => {
           cardType="compact"
           navigationClass="top-anime-button"
           swiperOptions={{
-            speed: 800,
             centeredSlides: false
           }}
         />

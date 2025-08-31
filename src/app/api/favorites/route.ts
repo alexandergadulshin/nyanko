@@ -1,30 +1,30 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { db } from "~/server/db";
 import { favorites } from "~/server/db/schema";
-import { eq, and } from "drizzle-orm";
-import { auth } from "~/lib/auth";
+import { eq, and, count } from "drizzle-orm";
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await auth.api.getSession({ headers: request.headers });
+    if (!db) {
+      return NextResponse.json({ error: "Database not available" }, { status: 503 });
+    }
+
+    const { userId } = await auth();
     
-    if (!session) {
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { searchParams } = new URL(request.url);
     const type = searchParams.get("type");
 
-    let query = db
-      .select()
-      .from(favorites)
-      .where(eq(favorites.userId, session.user.id));
-
+    let query = db.select().from(favorites).where(eq(favorites.userId, userId));
+    
     if (type) {
-      query = query.where(and(
-        eq(favorites.userId, session.user.id),
-        eq(favorites.type, type)
-      )) as typeof query;
+      query = db.select().from(favorites).where(
+        and(eq(favorites.userId, userId), eq(favorites.type, type))
+      );
     }
 
     const userFavorites = await query.orderBy(favorites.createdAt);
@@ -41,9 +41,13 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await auth.api.getSession({ headers: request.headers });
+    if (!db) {
+      return NextResponse.json({ error: "Database not available" }, { status: 503 });
+    }
+
+    const { userId } = await auth();
     
-    if (!session) {
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -66,13 +70,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    const favoriteId = `${session.user.id}_${type}_${itemId}`;
-
+    // Check if user already has this item as favorite
     const existing = await db
       .select()
       .from(favorites)
       .where(and(
-        eq(favorites.userId, session.user.id),
+        eq(favorites.userId, userId),
         eq(favorites.type, type),
         eq(favorites.itemId, itemId)
       ))
@@ -82,11 +85,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Already in favorites" }, { status: 409 });
     }
 
+    // Check if user already has 5 favorites of this type
+    const favoriteCount = await db
+      .select({ count: count() })
+      .from(favorites)
+      .where(and(eq(favorites.userId, userId), eq(favorites.type, type)));
+
+    if ((favoriteCount[0]?.count ?? 0) >= 5) {
+      return NextResponse.json(
+        { error: `Maximum 5 favorites allowed per category` },
+        { status: 409 }
+      );
+    }
+
+    const favoriteId = `${userId}_${type}_${itemId}`;
+
     const result = await db
       .insert(favorites)
       .values({
         id: favoriteId,
-        userId: session.user.id,
+        userId,
         type,
         itemId,
         itemTitle,
@@ -107,9 +125,13 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const session = await auth.api.getSession({ headers: request.headers });
+    if (!db) {
+      return NextResponse.json({ error: "Database not available" }, { status: 503 });
+    }
+
+    const { userId } = await auth();
     
-    if (!session) {
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -124,7 +146,7 @@ export async function DELETE(request: NextRequest) {
     const result = await db
       .delete(favorites)
       .where(and(
-        eq(favorites.userId, session.user.id),
+        eq(favorites.userId, userId),
         eq(favorites.type, type),
         eq(favorites.itemId, parseInt(itemId))
       ))

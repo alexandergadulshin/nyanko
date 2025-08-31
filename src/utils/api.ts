@@ -115,9 +115,9 @@ const JIKAN_BASE_URL = 'https://api.jikan.moe/v4';
 
 class JikanAPIService {
   private cache = new Map<string, { data: JikanResponse | JikanSingleResponse; timestamp: number }>();
-  private readonly cacheExpiry = 300000; 
+  private readonly cacheExpiry = 600000; // Increased to 10 minutes
   private lastRequestTime = 0;
-  private readonly rateLimitDelay = 1500;
+  private readonly rateLimitDelay = 5000; // Increased to 5 seconds
 
   private async makeRequest(endpoint: string): Promise<JikanResponse> {
     const cached = this.cache.get(endpoint);
@@ -145,8 +145,8 @@ class JikanAPIService {
       
       if (!response.ok) {
         if (response.status === 429) {
-          console.warn(`Rate limited on ${url}, waiting 5 seconds before retry`);
-          await new Promise(resolve => setTimeout(resolve, 5000));
+          console.warn(`Rate limited on ${url}, waiting 10 seconds before retry`);
+          await new Promise(resolve => setTimeout(resolve, 10000));
           this.lastRequestTime = Date.now();
           const retryResponse = await fetch(url);
           if (!retryResponse.ok) {
@@ -506,15 +506,90 @@ class JikanAPIService {
     const now = Date.now();
     
     if (cached && (now - cached.timestamp) < this.cacheExpiry) {
+      console.log("Using cached data for: /genres/anime");
       return (cached.data as any).data;
     }
 
-    const response = await fetch(`${JIKAN_BASE_URL}/genres/anime`);
-    if (!response.ok) throw new Error(`API error: ${response.status}`);
+    // Apply rate limiting
+    const timeSinceLastRequest = now - this.lastRequestTime;
+    if (timeSinceLastRequest < this.rateLimitDelay) {
+      const delay = this.rateLimitDelay - timeSinceLastRequest;
+      console.log(`Rate limiting genres: waiting ${delay}ms before request`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+
+    const url = `${JIKAN_BASE_URL}/genres/anime`;
+    console.log("Making API request to:", url);
     
-    const data = await response.json();
-    this.cache.set('/genres/anime', { data, timestamp: now });
-    return data.data;
+    this.lastRequestTime = Date.now();
+    
+    try {
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        if (response.status === 429) {
+          console.warn(`Rate limited on ${url}, waiting 10 seconds before retry`);
+          await new Promise(resolve => setTimeout(resolve, 10000));
+          this.lastRequestTime = Date.now();
+          const retryResponse = await fetch(url);
+          if (!retryResponse.ok) {
+            console.warn(`Retry also rate limited: ${retryResponse.status} for ${url}`);
+            // Return fallback genres instead of throwing error
+            return this.getFallbackGenres();
+          }
+          const retryData = await retryResponse.json();
+          this.cache.set('/genres/anime', { data: retryData, timestamp: Date.now() });
+          return retryData.data;
+        }
+        
+        if (response.status >= 500) {
+          console.warn(`Server error: ${response.status} for URL: ${url} - API temporarily unavailable`);
+          return this.getFallbackGenres();
+        }
+        
+        console.error(`API error: ${response.status} for URL: ${url}`);
+        throw new Error(`API error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log("API response received for genres");
+      this.cache.set('/genres/anime', { data, timestamp: Date.now() });
+      return data.data;
+    } catch (error) {
+      if (error instanceof Error && (error.message.includes('Server error') || error.message.includes('rate limited'))) {
+        console.warn('Genres API request failed, using fallback data:', error.message);
+        return this.getFallbackGenres();
+      } else {
+        console.error('Genres API request failed:', error);
+        throw error;
+      }
+    }
+  }
+
+  private getFallbackGenres(): GenreItem[] {
+    // Common anime genres as fallback when API is unavailable
+    return [
+      { mal_id: 1, name: "Action", count: 0 },
+      { mal_id: 2, name: "Adventure", count: 0 },
+      { mal_id: 4, name: "Comedy", count: 0 },
+      { mal_id: 8, name: "Drama", count: 0 },
+      { mal_id: 10, name: "Fantasy", count: 0 },
+      { mal_id: 14, name: "Horror", count: 0 },
+      { mal_id: 16, name: "Magic", count: 0 },
+      { mal_id: 18, name: "Mecha", count: 0 },
+      { mal_id: 19, name: "Music", count: 0 },
+      { mal_id: 22, name: "Romance", count: 0 },
+      { mal_id: 23, name: "School", count: 0 },
+      { mal_id: 24, name: "Sci-Fi", count: 0 },
+      { mal_id: 27, name: "Shounen", count: 0 },
+      { mal_id: 29, name: "Space", count: 0 },
+      { mal_id: 30, name: "Sports", count: 0 },
+      { mal_id: 31, name: "Super Power", count: 0 },
+      { mal_id: 37, name: "Supernatural", count: 0 },
+      { mal_id: 38, name: "Military", count: 0 },
+      { mal_id: 39, name: "Police", count: 0 },
+      { mal_id: 40, name: "Psychological", count: 0 },
+    ];
   }
 
   async searchCharacters(query: string, limit = 20): Promise<CharacterItem[]> {

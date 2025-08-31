@@ -3,7 +3,7 @@
 import { SignIn, SignUp } from "@clerk/nextjs";
 import { useUser } from "@clerk/nextjs";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useState, useEffect } from "react";
 
 function AuthContent() {
   const { user, isLoaded } = useUser();
@@ -12,18 +12,34 @@ function AuthContent() {
   const mode = searchParams.get("mode") || "sign-in";
   const [isSignUp, setIsSignUp] = useState(mode === "sign-up");
 
-  // Redirect authenticated users to profile
-  if (isLoaded && user) {
-    router.push("/profile");
-    return null;
-  }
+  // Redirect authenticated users to profile or onboarding
+  useEffect(() => {
+    if (isLoaded && user) {
+      // Check if user has completed onboarding by trying to fetch their profile
+      fetch(`/api/profile/${user.id}`)
+        .then(response => response.json())
+        .then(data => {
+          if (data.profile?.username && data.profile?.name) {
+            router.push("/profile");
+          } else {
+            router.push("/onboarding");
+          }
+        })
+        .catch(() => {
+          // If profile doesn't exist, redirect to onboarding
+          router.push("/onboarding");
+        });
+    }
+  }, [isLoaded, user, router]);
 
-  // Show loading state while Clerk is loading
-  if (!isLoaded) {
+  // Show loading state while Clerk is loading or redirecting authenticated users
+  if (!isLoaded || user) {
     return (
       <div className="min-h-screen bg-[#181622] light:bg-transparent py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-md mx-auto text-center">
-          <div className="text-white light:text-gray-900">Loading...</div>
+          <div className="text-white light:text-gray-900">
+            {!isLoaded ? "Loading..." : "Redirecting..."}
+          </div>
         </div>
       </div>
     );
@@ -94,8 +110,8 @@ function AuthContent() {
                   socialButtonsPlacement: 'top'
                 }
               }}
-              afterSignUpUrl="/"
-              redirectUrl="/"
+              afterSignUpUrl="/onboarding"
+              redirectUrl="/onboarding"
             />
           ) : (
             <SignIn 

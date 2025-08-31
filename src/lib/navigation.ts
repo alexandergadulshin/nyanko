@@ -15,6 +15,11 @@ export const USER_MENU_ITEMS: NavItem[] = [
     requiresAuth: true,
   },
   {
+    label: "Friends",
+    href: "/friends",
+    requiresAuth: true,
+  },
+  {
     label: "Settings", 
     href: ROUTES.SETTINGS,
     requiresAuth: true,

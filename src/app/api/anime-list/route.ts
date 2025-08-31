@@ -1,64 +1,40 @@
-import { type NextRequest } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { db } from "~/server/db";
 import { animeList } from "~/server/db/schema";
 import { eq, and } from "drizzle-orm";
-import { 
-  withErrorHandling, 
-  requireAuth, 
-  createSuccessResponse, 
-  createValidator,
-  validators,
-  handleDatabaseError,
-  getNumericParam,
-  ApiErrors
-} from "~/lib/api-utils";
+import { auth } from "@clerk/nextjs/server";
 
-interface AnimeListRequest {
-  animeId: number;
-  animeTitle: string;
-  animeImage?: string;
-  status: "planning" | "watching" | "completed" | "dropped" | "paused";
-  score?: number;
-  episodesWatched?: number;
-  totalEpisodes?: number;
-  notes?: string;
-}
-
-const validateAnimeListRequest = createValidator<AnimeListRequest>({
-  animeId: validators.positiveInteger,
-  animeTitle: validators.required,
-  animeImage: (value: unknown) => value === undefined || typeof value === 'string',
-  status: (value: unknown) => ['planning', 'watching', 'completed', 'dropped', 'paused'].includes(value as string),
-  score: (value: unknown) => value === undefined || (typeof value === 'number' && value >= 0 && value <= 10),
-  episodesWatched: (value) => value === undefined || validators.nonNegativeInteger(value),
-  totalEpisodes: (value) => value === undefined || validators.positiveInteger(value),
-  notes: (value: unknown) => value === undefined || typeof value === 'string'
-});
-
-export const POST = withErrorHandling(async (request: NextRequest) => {
-  const session = await requireAuth(request);
-  const body = await request.json() as unknown;
-  const validatedData = validateAnimeListRequest(body);
-
-  const {
-    animeId,
-    animeTitle,
-    animeImage,
-    status,
-    score,
-    episodesWatched,
-    totalEpisodes,
-    notes,
-  } = validatedData;
-
-  const listId = `${session.user.id}_${animeId}`;
-
+export async function POST(request: NextRequest) {
   try {
+    const { userId } = await auth();
+    
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = await request.json();
+    const {
+      animeId,
+      animeTitle,
+      animeImage,
+      status,
+      score,
+      episodesWatched,
+      totalEpisodes,
+      notes,
+    } = body;
+
+    if (!animeId || !animeTitle || !status) {
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    }
+
+    const listId = `${userId}_${animeId}`;
+
     const existing = await db
       .select()
       .from(animeList)
       .where(and(
-        eq(animeList.userId, session.user.id),
+        eq(animeList.userId, userId),
         eq(animeList.animeId, animeId)
       ))
       .limit(1);
@@ -75,17 +51,17 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
           totalEpisodes: totalEpisodes ?? null,
           notes: notes ?? null,
           updatedAt: new Date(),
-          ...(status === "completed" && !existing[0].finishDate ? { finishDate: new Date() } : {}),
-          ...(status === "watching" && !existing[0].startDate ? { startDate: new Date() } : {}),
+          ...(status === "completed" && !existing[0]?.finishDate ? { finishDate: new Date() } : {}),
+          ...(status === "watching" && !existing[0]?.startDate ? { startDate: new Date() } : {}),
         })
-        .where(eq(animeList.id, existing[0].id))
+        .where(eq(animeList.id, existing[0]!.id))
         .returning();
     } else {
       result = await db
         .insert(animeList)
         .values({
           id: listId,
-          userId: session.user.id,
+          userId: userId,
           animeId,
           animeTitle,
           animeImage: animeImage ?? null,
@@ -100,32 +76,43 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         .returning();
     }
 
-    return createSuccessResponse({ entry: result[0] });
+    return NextResponse.json({ success: true, entry: result[0] });
   } catch (error) {
-    handleDatabaseError(error, "anime list management");
+    console.error("Error managing anime list:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
-});
+}
 
-export const DELETE = withErrorHandling(async (request: NextRequest) => {
-  const session = await requireAuth(request);
-  const url = new URL(request.url);
-  const animeId = getNumericParam(url, "animeId");
-
+export async function DELETE(request: NextRequest) {
   try {
+    const { userId } = await auth();
+    
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const url = new URL(request.url);
+    const animeId = parseInt(url.searchParams.get("animeId") || "0");
+
+    if (!animeId) {
+      return NextResponse.json({ error: "Missing animeId parameter" }, { status: 400 });
+    }
+
     const result = await db
       .delete(animeList)
       .where(and(
-        eq(animeList.userId, session.user.id),
+        eq(animeList.userId, userId),
         eq(animeList.animeId, animeId)
       ))
       .returning();
 
     if (result.length === 0) {
-      throw ApiErrors.NOT_FOUND;
+      return NextResponse.json({ error: "Anime not found in list" }, { status: 404 });
     }
 
-    return createSuccessResponse();
+    return NextResponse.json({ success: true });
   } catch (error) {
-    handleDatabaseError(error, "anime list deletion");
+    console.error("Error deleting anime from list:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
-});
+}

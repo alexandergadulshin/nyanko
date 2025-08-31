@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import React, { useState, useEffect, Suspense } from "react";
+import React, { useState, useEffect, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FaStar, FaHeart, FaFilter, FaSort, FaTimes, FaPlay, FaUsers, FaTheaterMasks, FaBook } from "react-icons/fa";
 import { jikanAPI, type GenreItem, type SearchCategory, type SearchItem } from "~/utils/api";
@@ -130,8 +130,22 @@ function AdvancedSearchPageContent() {
       try {
         const genreList = await jikanAPI.getGenres();
         setGenres(genreList);
+        
+        // Check if we got fallback genres (they have count: 0)
+        if (genreList.length > 0 && genreList.every(genre => genre.count === 0)) {
+          console.log("Using fallback genres due to API issues");
+        }
       } catch (err) {
         console.error("Failed to load genres:", err);
+        if (err instanceof Error) {
+          if (err.message.includes('rate limited') || err.message.includes('429')) {
+            setError("API rate limited. Please wait a moment and refresh the page.");
+          } else if (err.message.includes('Server error')) {
+            setError("API temporarily unavailable. Please try again later.");
+          } else {
+            setError("Failed to load genres. Some filters may not be available.");
+          }
+        }
       }
     };
 
@@ -299,7 +313,7 @@ function AdvancedSearchPageContent() {
                           onClick={() => handleFilterChange('category', cat)}
                           className={`px-2 py-2 rounded-lg text-xs font-medium transition-all duration-200 flex flex-col items-center justify-center space-y-1 min-h-[60px] ${
                             filters.category === cat
-                              ? 'bg-purple-600 text-white shadow-lg'
+                              ? 'bg-purple-600 light:bg-purple-300 text-white shadow-lg'
                               : 'bg-[#6d28d9]/30 text-gray-300 hover:text-white hover:bg-purple-500/30 border border-purple-300/40'
                           }`}
                         >

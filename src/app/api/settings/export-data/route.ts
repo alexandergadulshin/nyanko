@@ -2,22 +2,19 @@ import { NextResponse } from "next/server";
 import { db } from "~/server/db";
 import { user, animeList, favorites } from "~/server/db/schema";
 import { eq } from "drizzle-orm";
-import { auth } from "~/lib/auth";
-import { headers } from "next/headers";
+import { auth } from "@clerk/nextjs/server";
 
 export async function GET() {
   try {
-    const session = await auth.api.getSession({
-      headers: await headers()
-    });
+    const { userId } = await auth();
 
-    if (!session?.user?.id) {
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     // Get user data
     const userData = await db.query.user.findFirst({
-      where: eq(user.id, session.user.id),
+      where: eq(user.id, userId),
       columns: {
         id: true,
         name: true,
@@ -30,12 +27,12 @@ export async function GET() {
 
     // Get anime list
     const userAnimeList = await db.query.animeList.findMany({
-      where: eq(animeList.userId, session.user.id),
+      where: eq(animeList.userId, userId),
     });
 
     // Get favorites
     const userFavorites = await db.query.favorites.findMany({
-      where: eq(favorites.userId, session.user.id),
+      where: eq(favorites.userId, userId),
     });
 
     const exportData = {
@@ -47,7 +44,7 @@ export async function GET() {
     };
 
     // Create JSON file
-    const fileName = `anime-web-data-${session.user.id}-${new Date().toISOString().split('T')[0]}.json`;
+    const fileName = `anime-web-data-${userId}-${new Date().toISOString().split('T')[0]}.json`;
     
     return new NextResponse(JSON.stringify(exportData, null, 2), {
       headers: {

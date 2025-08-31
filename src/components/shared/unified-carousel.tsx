@@ -81,7 +81,7 @@ export const UnifiedCarousel = React.memo(({
           </div>
         )}
         <div className="flex items-center justify-center h-96">
-          <div className="text-white text-lg">Loading amazing content...</div>
+          <div className="text-white light:text-black text-lg">Loading amazing content...</div>
         </div>
       </div>
     );
@@ -111,7 +111,7 @@ export const UnifiedCarousel = React.memo(({
           </div>
         )}
         <div className="flex items-center justify-center h-96">
-          <div className="text-white text-lg">No content available.</div>
+          <div className="text-white light:text-black text-lg">No content available.</div>
         </div>
       </div>
     );
@@ -124,12 +124,12 @@ export const UnifiedCarousel = React.memo(({
           <div className="text-left">
             {title === "Popular: New Releases" ? (
               <h2 className="text-3xl font-bold">
-                <span style={{ color: '#fff', WebkitTextStroke: '0.35px #000000' }} className="light:[color:#fff] light:[-webkit-text-stroke:0.35px_#000000]">Popular</span>
-                <span className="text-white">:</span>
+                <span className="text-white light:text-black light:[-webkit-text-stroke:none]" style={{ WebkitTextStroke: '0.35px #000000' }}>Popular</span>
+                <span className="text-white light:text-black">:</span>
                 <span className="text-[#e879f9]"> New Releases</span>
               </h2>
             ) : (
-              <h2 className="text-3xl font-bold text-white">{title}</h2>
+              <h2 className="text-3xl font-bold text-white light:text-black">{title}</h2>
             )}
           </div>
           {showSearchBar && (
@@ -142,7 +142,7 @@ export const UnifiedCarousel = React.memo(({
         </div>
       )}
       
-      <Swiper {...swiperConfig}>
+      <Swiper {...swiperConfig} className={cardType === 'compact' ? 'top-anime-swiper' : 'anime-swiper'}>
         {data.map((item, index) => (
           <SwiperSlide key={`${item.malId}-${index}`}>
             {cardType === 'compact' ? (

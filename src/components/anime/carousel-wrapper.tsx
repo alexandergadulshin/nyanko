@@ -32,9 +32,11 @@ export const CarouselWrapper = React.memo(() => {
       <Suspense fallback={<CarouselSkeleton />}>
         <AnimeCarousel />
       </Suspense>
-      <Suspense fallback={<CarouselSkeleton />}>
-        <TopAnimeCarousel />
-      </Suspense>
+      <div className="mt-6">
+        <Suspense fallback={<CarouselSkeleton />}>
+          <TopAnimeCarousel />
+        </Suspense>
+      </div>
       <Suspense fallback={<CarouselSkeleton />}>
         <TopMangaCarousel />
       </Suspense>

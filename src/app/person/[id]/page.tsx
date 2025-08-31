@@ -4,8 +4,9 @@ import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { FaHeart, FaCalendarAlt, FaUser, FaArrowLeft } from "react-icons/fa";
 import { jikanAPI, type PersonItem } from "~/utils/api";
+import { FavoriteButton } from "~/components/FavoriteButton";
 
-interface DetailedPersonItem extends PersonItem {
+interface DetailedPersonItem extends Omit<PersonItem, 'about'> {
   nameKanji: string | null;
   nicknames: string[];
   birthday: string | null;
@@ -204,11 +205,24 @@ export default function PersonDetailPage() {
                   ))}
                 </div>
               )}
-              <div className="flex items-center space-x-4">
+              <div className="flex items-center justify-between">
                 <span className="flex items-center text-gray-400">
                   <FaUser className="mr-2" />
                   Person
                 </span>
+                <FavoriteButton
+                  type="people"
+                  itemId={person.malId}
+                  itemTitle={person.name}
+                  itemImage={person.image}
+                  itemData={{
+                    nameKanji: person.nameKanji,
+                    birthday: person.birthday,
+                    favorites: person.favorites,
+                    website_url: person.website_url,
+                  }}
+                  className="ml-4"
+                />
               </div>
             </div>
 

@@ -13,7 +13,7 @@ interface AnimeSearchBarProps {
   defaultCategory?: SearchCategory;
 }
 
-const highlightMatchInText = React.memo(({ text, query }: { text: string; query: string }) => {
+const HighlightMatchInText = React.memo(({ text, query }: { text: string; query: string }) => {
   if (!query.trim()) return <>{text}</>;
   
   const queryLower = query.toLowerCase();
@@ -33,7 +33,7 @@ const highlightMatchInText = React.memo(({ text, query }: { text: string; query:
   );
 });
 
-highlightMatchInText.displayName = 'HighlightMatchInText';
+HighlightMatchInText.displayName = 'HighlightMatchInText';
 
 export function AnimeSearchBar({ 
   onItemSelect, 
@@ -251,10 +251,10 @@ export function AnimeSearchBar({
                   />
                   <div className="flex-1 min-w-0">
                     <h3 className="text-white light:text-gray-800 font-medium truncate">
-                      <highlightMatchInText text={getItemTitle(item)} query={query} />
+                      <HighlightMatchInText text={getItemTitle(item)} query={query} />
                     </h3>
                     <p className="text-gray-400 light:text-gray-600 text-sm truncate">
-                      <highlightMatchInText text={item.description} query={query} />
+                      <HighlightMatchInText text={item.description} query={query} />
                     </p>
                     <div className="flex items-center justify-between mt-1">
                       <div className="flex items-center space-x-3">
