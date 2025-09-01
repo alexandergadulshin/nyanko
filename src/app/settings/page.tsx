@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { useUser } from "@clerk/nextjs";
+import { useUser, useClerk } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useTheme } from "~/hooks/use-theme";
 import { UploadButton } from "~/lib/uploadthing";
@@ -62,6 +62,7 @@ const TIME_CONSTANTS = {
 
 export default function SettingsPage() {
   const { user, isLoaded } = useUser();
+  const { signOut } = useClerk();
   const router = useRouter();
   const { theme, toggleTheme } = useTheme();
   const [activeTab, setActiveTab] = useState<'profile' | 'privacy' | 'preferences' | 'account'>('profile');
@@ -306,11 +307,17 @@ export default function SettingsPage() {
         throw new Error('Failed to delete account');
       }
 
-      router.push('/auth?message=Account deleted successfully');
+      const data = await response.json();
+      if (data.shouldSignOut) {
+        await signOut();
+        router.push('/?message=Account deleted successfully');
+      } else {
+        router.push('/auth?message=Account deleted successfully');
+      }
     } catch (err) {
       showMessage('Failed to delete account', true);
     }
-  }, [deleteConfirmText, router, showMessage]);
+  }, [deleteConfirmText, router, showMessage, signOut]);
 
   const handleInputChange = useCallback((section: keyof UserSettings, field: string, value: unknown) => {
     setSettings(prev => ({

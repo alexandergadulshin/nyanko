@@ -2,7 +2,7 @@
 
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 export default function OnboardingPage() {
   const { user, isLoaded } = useUser();
@@ -13,6 +13,9 @@ export default function OnboardingPage() {
   const [error, setError] = useState("");
   const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
   const [checkingUsername, setCheckingUsername] = useState(false);
+  const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isLoaded && !user) {
@@ -92,6 +95,7 @@ export default function OnboardingPage() {
         body: JSON.stringify({
           name: displayName.trim(),
           username: username.trim(),
+          image: profileImage,
         }),
       });
 
@@ -106,6 +110,48 @@ export default function OnboardingPage() {
       setError(error instanceof Error ? error.message : "Failed to create profile");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const MAX_FILE_SIZE = 5 * 1024 * 1024;
+    if (file.size > MAX_FILE_SIZE) {
+      setError("Image must be less than 5MB");
+      return;
+    }
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      setError("Please upload a JPEG, PNG, or WebP image");
+      return;
+    }
+
+    setUploading(true);
+    setError("");
+
+    try {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          setProfileImage(event.target.result as string);
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      console.error("Error uploading image:", error);
+      setError("Failed to process image");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleRemoveImage = () => {
+    setProfileImage(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
     }
   };
 
@@ -183,6 +229,66 @@ export default function OnboardingPage() {
                   ) : null}
                 </div>
               )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-purple-100 light:text-gray-700 mb-2">
+                Profile Picture (Optional)
+              </label>
+              <div className="flex items-center space-x-4">
+                <div className="relative w-20 h-20 rounded-full border-2 border-white/30 light:border-gray-200 bg-white/10 light:bg-gray-100 overflow-hidden group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+                  {profileImage ? (
+                    <img
+                      src={profileImage}
+                      alt="Profile preview"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-purple-300 light:text-gray-500">
+                      <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center">
+                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  </div>
+                </div>
+                <div className="flex-1">
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={handleImageUpload}
+                    className="hidden"
+                  />
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading}
+                      className="px-4 py-2 text-sm bg-white/20 light:bg-gray-100 text-purple-100 light:text-gray-700 rounded-lg hover:bg-white/30 light:hover:bg-gray-200 transition-colors duration-200 disabled:opacity-50"
+                    >
+                      {uploading ? "Uploading..." : "Choose Photo"}
+                    </button>
+                    {profileImage && (
+                      <button
+                        type="button"
+                        onClick={handleRemoveImage}
+                        className="block px-4 py-2 text-sm bg-red-500/20 text-red-300 light:text-red-600 rounded-lg hover:bg-red-500/30 transition-colors duration-200"
+                      >
+                        Remove Photo
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-xs text-purple-200 light:text-gray-500 mt-1">
+                    JPEG, PNG, or WebP • Max 5MB • You can skip this step
+                  </p>
+                </div>
+              </div>
             </div>
 
             {error && (

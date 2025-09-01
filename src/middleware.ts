@@ -4,6 +4,7 @@ const isProtectedRoute = createRouteMatcher([
   '/profile(.*)',
   '/anime-list(.*)',
   '/settings(.*)',
+  '/onboarding(.*)',
 ])
 
 const isPublicRoute = createRouteMatcher([

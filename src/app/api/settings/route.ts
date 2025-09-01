@@ -143,6 +143,7 @@ export const PUT = withErrorHandling(async (request: NextRequest) => {
 interface CreateUserBody {
   name: string;
   username: string;
+  image?: string;
 }
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
@@ -155,7 +156,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   }
 
   const body = await request.json() as CreateUserBody;
-  const { name, username } = body;
+  const { name, username, image } = body;
 
   if (!name?.trim() || !username?.trim()) {
     return NextResponse.json({ error: ERROR_MESSAGES.MISSING_REQUIRED_FIELDS }, { status: HTTP_STATUS.BAD_REQUEST });
@@ -196,7 +197,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   if (existingUser) {
     const [updatedUser] = await database
       .update(user)
-      .set({ name: name.trim(), username: username.trim(), updatedAt: new Date() })
+      .set({ name: name.trim(), username: username.trim(), image: image || null, updatedAt: new Date() })
       .where(eq(user.id, userId))
       .returning(RETURN_COLUMNS);
 
@@ -215,7 +216,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       email: clerkUser.emailAddresses[0]?.emailAddress ?? "",
       username: username.trim(),
       emailVerified: clerkUser.emailAddresses[0]?.verification?.status === "verified",
-      image: clerkUser.imageUrl,
+      image: image || clerkUser.imageUrl,
       createdAt: new Date(),
       updatedAt: new Date(),
     })
