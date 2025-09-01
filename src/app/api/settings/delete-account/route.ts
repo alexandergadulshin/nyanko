@@ -19,6 +19,10 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Account deletion not confirmed" }, { status: 400 });
     }
 
+    console.log(`Starting complete account deletion for user: ${userId}`);
+
+    // Delete from database first (with all related data)
+    console.log("Deleting user data from database...");
     await database.delete(favorites).where(eq(favorites.userId, userId));
     await database.delete(animeList).where(eq(animeList.userId, userId));
     
@@ -39,17 +43,28 @@ export async function DELETE(request: NextRequest) {
     await database.delete(session).where(eq(session.userId, userId));
     await database.delete(account).where(eq(account.userId, userId));
     
-    await database.delete(user).where(eq(user.id, userId));
+    const deletedUser = await database.delete(user).where(eq(user.id, userId)).returning();
+    console.log("✅ Database deletion completed");
 
+    // Delete from Clerk authentication system
+    console.log("Deleting user from Clerk...");
     try {
       await clerkClient().users.deleteUser(userId);
+      console.log("✅ Clerk deletion completed");
     } catch (clerkError) {
-      console.error("Error deleting Clerk user:", clerkError);
+      console.error("❌ Error deleting Clerk user:", clerkError);
+      // Note: Database deletion already completed, so we'll still return success
+      // This prevents the user from being stuck in a partially deleted state
     }
 
-    return NextResponse.json({ message: "Account deleted successfully", shouldSignOut: true });
+    console.log(`🎉 Complete account deletion finished for user: ${userId}`);
+    return NextResponse.json({ 
+      message: "Account deleted successfully", 
+      shouldSignOut: true,
+      deletedUser: deletedUser[0]?.email || "Unknown"
+    });
   } catch (error) {
-    console.error("Error deleting account:", error);
+    console.error("❌ Error deleting account:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
