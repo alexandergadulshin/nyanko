@@ -73,9 +73,9 @@ export function Navbar() {
 
         <div className="flex items-center space-x-1 sm:space-x-2">
             <Link
-              href="/advanced-search"
+              href="/search"
               className="inline-flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-lg text-white/80 hover:text-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-200 light:text-gray-400 light:hover:text-gray-200"
-              title="Advanced Search"
+              title="Search"
             >
               <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />

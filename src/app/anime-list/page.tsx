@@ -4,7 +4,6 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { FaArrowLeft, FaPlus, FaSearch, FaFilter, FaEdit, FaTrash, FaMinus } from "react-icons/fa";
-import { jikanAPI } from "~/utils/api";
 import { usePreferences } from "~/hooks/use-preferences";
 
 interface AnimeListItem {
@@ -214,35 +213,49 @@ export default function AnimeListPage() {
     }
   }, [user?.id, isLoaded, fetchAnimeList]);
 
-  const searchForAnime = useCallback(async () => {
-    if (!searchQuery.trim()) {
-      setSearchResults([]);
-      return;
-    }
-    
-    setSearchLoading(true);
-    try {
-      const results = await jikanAPI.searchAnime(searchQuery);
-      setSearchResults(results.slice(0, 10));
-    } catch (err) {
-      console.error("Error searching anime:", err);
-      setSearchResults([]);
-    } finally {
-      setSearchLoading(false);
-    }
-  }, [searchQuery]);
+  const searchForAnime = useCallback(
+    async (signal?: AbortSignal) => {
+      const q = searchQuery.trim();
+      if (!q) {
+        setSearchResults([]);
+        return;
+      }
+
+      setSearchLoading(true);
+      try {
+        const res = await fetch(
+          `/api/search?q=${encodeURIComponent(q)}&category=anime&limit=10`,
+          { signal },
+        );
+        if (!res.ok) throw new Error("Failed to search anime");
+        const data = (await res.json()) as { items?: SearchAnime[] };
+        setSearchResults(data.items ?? []);
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        console.error("Error searching anime:", err);
+        setSearchResults([]);
+      } finally {
+        // Leave the spinner up if a newer request just aborted this one.
+        if (!signal?.aborted) setSearchLoading(false);
+      }
+    },
+    [searchQuery],
+  );
 
   useEffect(() => {
+    if (!searchQuery.trim()) {
+      setSearchResults([]);
+      setSearchLoading(false);
+      return;
+    }
+    const controller = new AbortController();
     const timeoutId = setTimeout(() => {
-      if (searchQuery.trim()) {
-        searchForAnime().catch(console.error);
-      } else {
-        setSearchResults([]);
-        setSearchLoading(false);
-      }
-    }, 500);
-
-    return () => clearTimeout(timeoutId);
+      void searchForAnime(controller.signal);
+    }, 400);
+    return () => {
+      clearTimeout(timeoutId);
+      controller.abort();
+    };
   }, [searchQuery, searchForAnime]);
 
   const addAnimeToList = async (anime: SearchAnime, status: AnimeListItem["status"]) => {
@@ -615,7 +628,7 @@ export default function AnimeListPage() {
                     className="flex-1 px-4 py-2 bg-gray-900/40 border border-gray-600/40 rounded text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-purple-500"
                   />
                   <button
-                    onClick={searchForAnime}
+                    onClick={() => void searchForAnime()}
                     disabled={searchLoading}
                     className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded flex items-center space-x-2 disabled:opacity-50"
                   >
