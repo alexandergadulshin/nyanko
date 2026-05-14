@@ -1,3 +1,7 @@
+import { cache, TTL } from "~/lib/cache";
+import { cacheKey } from "~/lib/cache-keys";
+import { rateLimit } from "~/lib/rate-limiter";
+
 interface BasicMalItem {
   mal_id: number;
   name: string;
@@ -116,8 +120,6 @@ export type SearchCategory = "anime" | "characters" | "people" | "manga";
 export type SearchItem = AnimeItem | CharacterItem | PersonItem | MangaItem;
 
 const JIKAN_BASE_URL = 'https://api.jikan.moe/v4';
-const CACHE_EXPIRY = 600000;
-const RATE_LIMIT_DELAY = 5000;
 const RETRY_DELAY = 10000;
 const MAX_LIMIT = 25;
 const DEFAULT_LIMIT = 20;
@@ -159,41 +161,33 @@ const FALLBACK_GENRES: GenreItem[] = [
 ];
 
 class JikanAPIService {
-  private cache = new Map<string, { data: JikanResponse | JikanSingleResponse; timestamp: number }>();
-  private lastRequestTime = 0;
-
-  private async makeRequest(endpoint: string): Promise<JikanResponse> {
-    const cached = this.cache.get(endpoint);
-    const now = Date.now();
-    
-    if (cached && (now - cached.timestamp) < CACHE_EXPIRY) {
-      return cached.data as JikanResponse;
-    }
-
-    const timeSinceLastRequest = now - this.lastRequestTime;
-    if (timeSinceLastRequest < RATE_LIMIT_DELAY) {
-      await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY - timeSinceLastRequest));
-    }
-
-    const url = `${JIKAN_BASE_URL}${endpoint}`;
-    this.lastRequestTime = Date.now();
-    
-    try {
+  /**
+   * Centralised JSON GET. Wraps every Jikan call with:
+   *   - the global `cache` layer (Upstash Redis when configured,
+   *     in-memory LRU fallback otherwise) keyed by endpoint,
+   *   - the global `rateLimit("jikan")` token-bucket so we stay
+   *     under Jikan's published 3 req/s budget across the process.
+   * The TTL is per call so search results can expire faster than
+   * detail pages or the genre taxonomy.
+   */
+  private async makeRequest(
+    endpoint: string,
+    ttlSeconds: number = TTL.SEARCH,
+  ): Promise<JikanResponse> {
+    const key = `v1:jikan:raw:${endpoint}`;
+    return cache.withCache(key, ttlSeconds, async () => {
+      await rateLimit("jikan");
+      const url = `${JIKAN_BASE_URL}${endpoint}`;
       const response = await this.fetchWithRetry(url);
-      const data = await response.json() as JikanResponse;
-      this.cache.set(endpoint, { data, timestamp: Date.now() });
-      return data;
-    } catch (error) {
-      throw error;
-    }
+      return (await response.json()) as JikanResponse;
+    });
   }
 
   private async fetchWithRetry(url: string): Promise<Response> {
     const response = await fetch(url);
-    
+
     if (response.status === 429) {
       await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
-      this.lastRequestTime = Date.now();
       const retryResponse = await fetch(url);
       if (!retryResponse.ok) {
         throw new Error(`API rate limited: ${retryResponse.status}`);
@@ -506,41 +500,31 @@ class JikanAPIService {
   }
 
   async getAnimeById(malId: number): Promise<DetailedAnimeItem> {
-    const cached = this.cache.get(`/anime/${malId}`);
-    const now = Date.now();
-    
-    if (cached && (now - cached.timestamp) < CACHE_EXPIRY) {
-      return this.transformDetailedAnimeData((cached.data as JikanSingleResponse).data);
-    }
-
-    const response = await this.fetchWithRetry(`${JIKAN_BASE_URL}/anime/${malId}`);
-    const data = await response.json() as JikanSingleResponse;
-    this.cache.set(`/anime/${malId}`, { data, timestamp: now });
+    const data = await cache.withCache(
+      cacheKey.jikan.animeById(malId),
+      TTL.ITEM_DETAILS,
+      async () => {
+        await rateLimit("jikan");
+        const response = await this.fetchWithRetry(`${JIKAN_BASE_URL}/anime/${malId}`);
+        return (await response.json()) as JikanSingleResponse;
+      },
+    );
     return this.transformDetailedAnimeData(data.data);
   }
 
   async getGenres(): Promise<GenreItem[]> {
-    const cached = this.cache.get('/genres/anime');
-    const now = Date.now();
-    
-    if (cached && (now - cached.timestamp) < CACHE_EXPIRY) {
-      return (cached.data as any).data;
-    }
-
-    const timeSinceLastRequest = now - this.lastRequestTime;
-    if (timeSinceLastRequest < RATE_LIMIT_DELAY) {
-      await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY - timeSinceLastRequest));
-    }
-
-    const url = `${JIKAN_BASE_URL}/genres/anime`;
-    this.lastRequestTime = Date.now();
-    
     try {
-      const response = await this.fetchWithRetry(url);
-      const data = await response.json();
-      this.cache.set('/genres/anime', { data, timestamp: Date.now() });
+      const data = await cache.withCache<{ data: GenreItem[] }>(
+        cacheKey.jikan.genres(),
+        TTL.TAXONOMY,
+        async () => {
+          await rateLimit("jikan");
+          const response = await this.fetchWithRetry(`${JIKAN_BASE_URL}/genres/anime`);
+          return (await response.json()) as { data: GenreItem[] };
+        },
+      );
       return data.data;
-    } catch (error) {
+    } catch {
       return this.getFallbackGenres();
     }
   }
