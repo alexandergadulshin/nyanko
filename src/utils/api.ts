@@ -44,6 +44,87 @@ export interface JikanSingleResponse {
   data: JikanAnimeData;
 }
 
+/* -------------------------------------------------------------------------- */
+/* Raw single-entity shapes for the detail pages.                              */
+/* Typed only on the fields the pages actually render — everything else is     */
+/* permissive so we can ingest Jikan's full response unchanged.                */
+/* -------------------------------------------------------------------------- */
+
+export interface JikanMangaRaw {
+  mal_id: number;
+  title: string;
+  title_english?: string | null;
+  title_japanese?: string | null;
+  synopsis?: string | null;
+  status?: string;
+  publishing?: boolean;
+  images?: { jpg?: { large_image_url?: string; image_url?: string } };
+  favorites?: number | null;
+  score?: number | null;
+  scored_by?: number | null;
+  rank?: number | null;
+  popularity?: number | null;
+  chapters?: number | null;
+  volumes?: number | null;
+  type?: string;
+  published?: { from?: string | null; to?: string | null };
+  genres?: Array<{ mal_id?: number; name: string }>;
+  themes?: Array<{ mal_id?: number; name: string }>;
+  demographics?: Array<{ mal_id?: number; name: string }>;
+  authors?: Array<{ mal_id?: number; name: string }>;
+  serializations?: Array<{ mal_id?: number; name: string }>;
+}
+
+export interface JikanCharacterFullRaw {
+  mal_id: number;
+  name: string;
+  name_kanji?: string | null;
+  nicknames?: string[];
+  about?: string | null;
+  images?: { jpg?: { image_url?: string }; webp?: { image_url?: string } };
+  favorites?: number | null;
+  anime?: Array<{
+    role: string;
+    anime: { mal_id: number; title: string; images: { jpg: { image_url: string } } };
+  }>;
+  manga?: Array<{
+    role: string;
+    manga: { mal_id: number; title: string; images: { jpg: { image_url: string } } };
+  }>;
+  voices?: Array<{
+    language: string;
+    person: { mal_id: number; name: string; images: { jpg: { image_url: string } } };
+  }>;
+}
+
+export interface JikanPersonFullRaw {
+  mal_id: number;
+  name: string;
+  family_name?: string | null;
+  given_name?: string | null;
+  alternate_names?: string[];
+  birthday?: string | null;
+  about?: string | null;
+  website_url?: string | null;
+  images?: { jpg?: { image_url?: string } };
+  favorites?: number | null;
+  anime?: Array<{
+    position: string;
+    anime: { mal_id: number; title: string; images: { jpg: { image_url: string } } };
+  }>;
+  manga?: Array<{
+    position: string;
+    manga: { mal_id: number; title: string; images: { jpg: { image_url: string } } };
+  }>;
+  voices?: Array<{
+    role: string;
+    anime: { mal_id: number; title: string; images: { jpg: { image_url: string } } };
+    character: { mal_id: number; name: string; images: { jpg: { image_url: string } } };
+  }>;
+}
+
+interface JikanWrapped<T> { data: T }
+
 export interface DetailedAnimeItem extends AnimeItem {
   titleJapanese: string | null;
   episodes: number | null;
@@ -170,16 +251,16 @@ class JikanAPIService {
    * The TTL is per call so search results can expire faster than
    * detail pages or the genre taxonomy.
    */
-  private async makeRequest(
+  private async makeRequest<T = JikanResponse>(
     endpoint: string,
     ttlSeconds: number = TTL.SEARCH,
-  ): Promise<JikanResponse> {
+  ): Promise<T> {
     const key = `v1:jikan:raw:${endpoint}`;
     return cache.withCache(key, ttlSeconds, async () => {
       await rateLimit("jikan");
       const url = `${JIKAN_BASE_URL}${endpoint}`;
       const response = await this.fetchWithRetry(url);
-      return (await response.json()) as JikanResponse;
+      return (await response.json()) as T;
     });
   }
 
@@ -416,6 +497,61 @@ class JikanAPIService {
   getCurrentlyAiring(limit = DEFAULT_LIMIT) { return this.fetchAnime('/seasons/now', limit); }
   getTopAnime(limit = DEFAULT_LIMIT) { return this.fetchAnime('/top/anime', limit); }
   getUpcomingAnime(limit = DEFAULT_LIMIT) { return this.fetchAnime('/seasons/upcoming', limit); }
+
+  /**
+   * Cached single-entity fetches for the manga / character / person detail
+   * pages. Each goes through the same rate-limit + cache pipeline as the
+   * rest of the Jikan client (TTL.ITEM_DETAILS = 1h). Returns the raw
+   * Jikan record so the page-side rendering code can keep its existing
+   * destructuring intact.
+   */
+  async getMangaById(malId: number): Promise<JikanMangaRaw> {
+    const res = await this.makeRequest<JikanWrapped<JikanMangaRaw>>(
+      `/manga/${malId}`,
+      TTL.ITEM_DETAILS,
+    );
+    return res.data;
+  }
+
+  async getCharacterFullById(malId: number): Promise<JikanCharacterFullRaw> {
+    const res = await this.makeRequest<JikanWrapped<JikanCharacterFullRaw>>(
+      `/characters/${malId}/full`,
+      TTL.ITEM_DETAILS,
+    );
+    return res.data;
+  }
+
+  async getPersonFullById(malId: number): Promise<JikanPersonFullRaw> {
+    const res = await this.makeRequest<JikanWrapped<JikanPersonFullRaw>>(
+      `/people/${malId}/full`,
+      TTL.ITEM_DETAILS,
+    );
+    return res.data;
+  }
+
+  /**
+   * MAL/Jikan-curated "if you liked this, try these" list for a single
+   * anime. Returns just the MAL IDs — callers hydrate via the aggregator
+   * (which already caches per-item) to keep this method light.
+   * Endpoint: GET /anime/{id}/recommendations
+   */
+  async getAnimeRecommendations(malId: number, limit = 25): Promise<number[]> {
+    const key = `v1:jikan:anime-recs:${malId}`;
+    return cache.withCache(key, TTL.TOP_LISTS, async () => {
+      await rateLimit("jikan");
+      const res = await this.fetchWithRetry(`${JIKAN_BASE_URL}/anime/${malId}/recommendations`);
+      const json = (await res.json()) as {
+        data?: Array<{ entry?: { mal_id?: number }; votes?: number }>;
+      };
+      const out: number[] = [];
+      for (const item of json.data ?? []) {
+        const id = item.entry?.mal_id;
+        if (typeof id === "number") out.push(id);
+        if (out.length >= limit) break;
+      }
+      return out;
+    });
+  }
   
   async getTopManga(limit = DEFAULT_LIMIT): Promise<MangaItem[]> {
     const apiLimit = Math.min(limit, MAX_LIMIT);
