@@ -29,7 +29,7 @@
  * Jikan/AniList shapes.
  */
 
-import { jikanAPI } from "~/utils/api";
+import { jikanAPI, type SearchPagedParams } from "~/utils/api";
 import { multiSourceAPI } from "./multi-source";
 import { cache } from "./cache";
 import { cacheKey } from "./cache-keys";
@@ -45,6 +45,8 @@ export type {
   GenreItem,
   SearchCategory,
   SearchItem,
+  SearchPagedParams,
+  SearchPagedResult,
 } from "~/utils/api";
 
 export { TTL } from "./cache";
@@ -116,6 +118,13 @@ export const aggregator = {
     category: "anime" | "characters" | "people" | "manga",
     limit = 20,
   ) => jikanAPI.searchMultiCategory(query, category, limit),
+
+  /**
+   * Unified paginated search with filters — backs the /search page and the
+   * /api/search route. Real server-side pagination via Jikan's `page`
+   * param, all four categories, one shared cache + rate-limit pipeline.
+   */
+  searchPaged: (params: SearchPagedParams) => jikanAPI.searchPaged(params),
 
   /* ------------------------------ Cache ops ------------------------------- */
   cache: {

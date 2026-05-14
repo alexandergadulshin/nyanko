@@ -200,6 +200,48 @@ export interface MangaItem {
 export type SearchCategory = "anime" | "characters" | "people" | "manga";
 export type SearchItem = AnimeItem | CharacterItem | PersonItem | MangaItem;
 
+/** Filters accepted by the unified paginated search. */
+export interface SearchPagedParams {
+  query?: string;
+  category: SearchCategory;
+  type?: string;
+  status?: string;
+  rating?: string;
+  genres?: number[];
+  excludeGenres?: number[];
+  minScore?: number;
+  orderBy?: string;
+  sort?: "asc" | "desc";
+  page?: number;
+  limit?: number;
+}
+
+/** One page of search results plus Jikan's pagination metadata. */
+export interface SearchPagedResult {
+  items: SearchItem[];
+  page: number;
+  hasNextPage: boolean;
+  lastPage: number;
+  total: number;
+}
+
+interface JikanPagedResponse<T> {
+  data: T[];
+  pagination?: {
+    last_visible_page?: number;
+    has_next_page?: boolean;
+    current_page?: number;
+    items?: { count?: number; total?: number; per_page?: number };
+  };
+}
+
+const SEARCH_ENDPOINT: Record<SearchCategory, string> = {
+  anime: "anime",
+  manga: "manga",
+  characters: "characters",
+  people: "people",
+};
+
 const JIKAN_BASE_URL = 'https://api.jikan.moe/v4';
 const RETRY_DELAY = 10000;
 const MAX_LIMIT = 25;
@@ -759,6 +801,81 @@ class JikanAPIService {
     };
     
     return searchMethods[category]?.() ?? this.searchAnime(query, limit);
+  }
+
+  /**
+   * Unified, paginated search across all four categories. Uses Jikan's
+   * native `page` parameter for real server-side pagination — the legacy
+   * advancedSearch capped every query at 25 rows and paginated client-side.
+   * Goes through the same cache + rate-limit pipeline as every other call.
+   * An empty query falls back to ordering the whole catalogue, so "no
+   * query" still surfaces top picks for the category.
+   */
+  async searchPaged(params: SearchPagedParams): Promise<SearchPagedResult> {
+    const {
+      category,
+      query,
+      type,
+      status,
+      rating,
+      genres,
+      excludeGenres,
+      minScore,
+      orderBy,
+      sort,
+      page = 1,
+      limit = DEFAULT_LIMIT,
+    } = params;
+
+    const sp = new URLSearchParams();
+    const trimmedQuery = query?.trim();
+    if (trimmedQuery) sp.set("q", trimmedQuery);
+    sp.set("page", String(Math.max(1, page)));
+    sp.set("limit", String(Math.min(limit, MAX_LIMIT)));
+
+    if (category === "anime" || category === "manga") {
+      if (type) sp.set("type", type);
+      if (status) sp.set("status", status);
+      if (genres?.length) sp.set("genres", genres.join(","));
+      if (excludeGenres?.length) sp.set("genres_exclude", excludeGenres.join(","));
+      if (minScore && minScore > 0) sp.set("min_score", String(minScore));
+    }
+    if (category === "anime" && rating) sp.set("rating", rating);
+
+    const defaultOrder =
+      category === "characters" || category === "people" ? "favorites" : "score";
+    sp.set("order_by", orderBy ?? defaultOrder);
+    sp.set("sort", sort ?? "desc");
+
+    const endpoint = `/${SEARCH_ENDPOINT[category]}?${sp.toString()}`;
+    const response = await this.makeRequest<JikanPagedResponse<unknown>>(endpoint);
+    const rows = Array.isArray(response.data) ? response.data : [];
+
+    let items: SearchItem[] = [];
+    switch (category) {
+      case "anime":
+        items = rows.map((r) => this.transformAnimeData(r as JikanAnimeData));
+        break;
+      case "manga":
+        items = rows.map((r) => this.transformMangaData(r));
+        break;
+      case "characters":
+        items = rows.map((r) => this.transformCharacterData(r));
+        break;
+      case "people":
+        items = rows.map((r) => this.transformPersonData(r));
+        break;
+    }
+    items = this.removeDuplicates(items);
+
+    const pg = response.pagination;
+    return {
+      items,
+      page: pg?.current_page ?? Math.max(1, page),
+      hasNextPage: pg?.has_next_page ?? false,
+      lastPage: pg?.last_visible_page ?? Math.max(1, page),
+      total: pg?.items?.total ?? items.length,
+    };
   }
 }
 
