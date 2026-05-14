@@ -18,10 +18,10 @@ import { ConfirmDialog } from "~/components/ui/confirm-dialog";
 import { Button } from "~/components/ui/button";
 
 import {
-  ProfileHeader,
+  ProfileHero,
   type FriendshipStatus,
   type ProfileSummary,
-} from "~/components/profile/profile-header";
+} from "~/components/profile/profile-hero";
 import { ProfileStats } from "~/components/profile/profile-stats";
 import {
   ProfileFavorites,
@@ -54,45 +54,62 @@ export default function ProfilePage({
   // Modal state for destructive friend removal.
   const [confirmRemove, setConfirmRemove] = useState(false);
 
-  const isOwn = isLoaded && user?.id === userId;
+  // Ownership is derived once we've fetched the profile and have its
+  // canonical Clerk ID. Computing from the URL param alone breaks when the
+  // URL contains a username instead of a Clerk ID.
+  const isOwn = !!profile && !!user && user.id === profile.id;
 
   /* --------------------------------------------------------------- fetch */
 
   const refresh = useCallback(async () => {
     setError(null);
     try {
-      // Profile + anime list together (server already bundles them).
-      const profileReq = fetch(`/api/profile/${userId}`).then((r) => {
-        if (!r.ok) throw new Error(`Profile fetch failed (${r.status})`);
-        return r.json();
-      });
-
-      // Favorites only if it's your own profile (matches old behavior;
-      // server already gates by ownership too).
-      const favReq = isOwn
-        ? fetch("/api/favorites").then((r) => (r.ok ? r.json() : { favorites: [] }))
-        : Promise.resolve({ favorites: [] });
-
-      // Friendship status only if viewing someone else.
-      const friendReq = !isOwn && user
-        ? fetch(`/api/friends/status/${userId}`).then((r) => (r.ok ? r.json() : null))
-        : Promise.resolve(null);
-
-      const [pData, fData, fsData] = await Promise.all([profileReq, favReq, friendReq]);
+      // 1. Profile (the URL param may be either a Clerk ID or a username;
+      // the API resolves both). We need this first because the favorites /
+      // friend-status calls depend on the resolved profile.id.
+      const pRes = await fetch(`/api/profile/${userId}`);
+      if (!pRes.ok) throw new Error(`Profile fetch failed (${pRes.status})`);
+      const pData = (await pRes.json()) as {
+        profile: ProfileSummary;
+        animeList: ActivityEntry[];
+      };
 
       setProfile(pData.profile);
       setAnimeList(pData.animeList ?? []);
+
+      // 2. Canonicalise the URL: prefer /profile/<username> over the raw
+      // Clerk ID. Replace (not push) so the back button isn't polluted.
+      if (pData.profile.username && pData.profile.username !== userId) {
+        router.replace(`/profile/${pData.profile.username}`);
+        // The effect re-fires under the new userId; bail to avoid a
+        // duplicate fetch.
+        return;
+      }
+
+      // 3. Ownership-dependent companions, using the canonical Clerk ID.
+      const ownProfile = !!user && user.id === pData.profile.id;
+      const [fData, fsData] = await Promise.all([
+        ownProfile
+          ? fetch("/api/favorites").then((r) => (r.ok ? r.json() : { favorites: [] }))
+          : Promise.resolve({ favorites: [] }),
+        !ownProfile && user
+          ? fetch(`/api/friends/status/${pData.profile.id}`).then((r) =>
+              r.ok ? r.json() : null,
+            )
+          : Promise.resolve(null),
+      ]);
+
       setFavorites(fData.favorites ?? []);
       setFriendship(fsData ?? null);
 
       // Force onboarding when own profile lacks required fields.
-      if (isOwn && (!pData.profile?.username || !pData.profile?.name)) {
+      if (ownProfile && (!pData.profile?.username || !pData.profile?.name)) {
         router.push("/onboarding");
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't load profile");
     }
-  }, [userId, isOwn, user, router]);
+  }, [userId, user, router]);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -180,18 +197,19 @@ export default function ProfilePage({
   /* --------------------------------------------------------- friendship */
 
   const refreshFriendship = useCallback(async () => {
-    if (isOwn || !user) return;
-    const res = await fetch(`/api/friends/status/${userId}`);
+    if (isOwn || !user || !profile) return;
+    const res = await fetch(`/api/friends/status/${profile.id}`);
     if (res.ok) setFriendship(await res.json());
-  }, [isOwn, user, userId]);
+  }, [isOwn, user, profile]);
 
   const sendRequest = useCallback(async () => {
+    if (!profile) return;
     setFriendActionLoading(true);
     try {
       const res = await fetch("/api/friends/requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ toUserId: userId }),
+        body: JSON.stringify({ toUserId: profile.id }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -203,7 +221,7 @@ export default function ProfilePage({
     } finally {
       setFriendActionLoading(false);
     }
-  }, [userId, refreshFriendship]);
+  }, [profile, refreshFriendship]);
 
   const respond = useCallback(
     async (action: "accept" | "decline") => {
@@ -297,9 +315,15 @@ export default function ProfilePage({
 
   return (
     <Shell>
-      <div className="space-y-6">
-        <ProfileHeader
+      <div className="space-y-8">
+        <ProfileHero
           profile={profile}
+          stats={{
+            totalAnime: stats.totalAnime,
+            totalEpisodes: stats.totalEpisodes,
+            totalDays: stats.totalDays,
+            averageScore: stats.averageScore,
+          }}
           isOwn={!!isOwn}
           friendship={friendship}
           pendingFriendAction={friendActionLoading}
@@ -342,9 +366,12 @@ export default function ProfilePage({
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
+  // Slightly deeper background than the rest of the app so the gradient
+  // banner in the header reads with more pop. Avatar ring uses the same
+  // value so it visually anchors to the page.
   return (
-    <main className="min-h-screen bg-[#0F0E16]">
-      <div className="mx-auto max-w-5xl px-4 pb-16 pt-24 sm:px-6">{children}</div>
+    <main className="min-h-screen bg-[#0A0917]">
+      <div className="mx-auto max-w-5xl px-4 pb-20 pt-24 sm:px-6">{children}</div>
     </main>
   );
 }

@@ -1,15 +1,12 @@
 "use client";
 
 /**
- * ProfileStats — visual breakdown of a user's anime list.
+ * ProfileStats — Apple-style "watch breakdown" card. The hero card
+ * already shows the headline numbers; this section drills into the
+ * status composition with a polished horizontal segmented bar.
  *
- * Top row: 4 key metrics (Total, Episodes, Days watched, Mean score).
- * Below: a segmented horizontal bar showing watch-time contribution per
- * status (completed/watching/paused/dropped/planning), color-coded with
- * a legend underneath.
- *
- * The status colors are intentionally muted so the bar reads as data, not
- * decoration.
+ * One rounded-3xl card. Inside: section label, segmented bar with
+ * smooth color-band transitions, legend grid.
  */
 
 import { useMemo } from "react";
@@ -31,14 +28,15 @@ export interface ProfileStatsInput {
 const STATUS_META: ReadonlyArray<{
   key: keyof ProfileStatsInput["byStatus"];
   label: string;
-  color: string;
+  bar: string;
   text: string;
+  dot: string;
 }> = [
-  { key: "completed", label: "Completed", color: "bg-emerald-500/80", text: "text-emerald-300" },
-  { key: "watching", label: "Watching", color: "bg-sky-500/80", text: "text-sky-300" },
-  { key: "paused", label: "Paused", color: "bg-amber-500/80", text: "text-amber-300" },
-  { key: "dropped", label: "Dropped", color: "bg-rose-500/80", text: "text-rose-300" },
-  { key: "planning", label: "Plan to watch", color: "bg-zinc-500/80", text: "text-zinc-300" },
+  { key: "completed", label: "Completed", bar: "bg-emerald-400", text: "text-emerald-200", dot: "bg-emerald-400" },
+  { key: "watching",  label: "Watching",  bar: "bg-sky-400",     text: "text-sky-200",     dot: "bg-sky-400" },
+  { key: "paused",    label: "Paused",    bar: "bg-amber-400",   text: "text-amber-200",   dot: "bg-amber-400" },
+  { key: "dropped",   label: "Dropped",   bar: "bg-rose-400",    text: "text-rose-200",    dot: "bg-rose-400" },
+  { key: "planning",  label: "Planning",  bar: "bg-zinc-400",    text: "text-zinc-200",    dot: "bg-zinc-400" },
 ];
 
 interface ProfileStatsProps {
@@ -47,7 +45,7 @@ interface ProfileStatsProps {
 
 export function ProfileStats({ stats }: ProfileStatsProps) {
   const segments = useMemo(() => {
-    const total = stats.totalAnime || 1; // avoid /0
+    const total = stats.totalAnime || 1;
     return STATUS_META.map((m) => ({
       ...m,
       value: stats.byStatus[m.key],
@@ -56,37 +54,23 @@ export function ProfileStats({ stats }: ProfileStatsProps) {
   }, [stats]);
 
   return (
-    <section
-      id="statistics"
-      className="rounded-2xl bg-white/[0.03] ring-1 ring-white/[0.06] p-6 sm:p-8"
-    >
-      <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-400">
-        Statistics
-      </h2>
+    <section id="statistics">
+      <SectionCard>
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-lg font-semibold tracking-tight text-white">List composition</h2>
+          <p className="text-xs text-zinc-400">{stats.totalAnime} total</p>
+        </div>
 
-      <dl className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <Metric label="Total" value={stats.totalAnime.toLocaleString()} />
-        <Metric label="Episodes" value={stats.totalEpisodes.toLocaleString()} />
-        <Metric label="Days watched" value={stats.totalDays.toFixed(1)} />
-        <Metric
-          label="Mean score"
-          value={stats.averageScore !== null ? stats.averageScore.toFixed(2) : "—"}
-          accent={stats.averageScore !== null}
-        />
-      </dl>
-
-      {/* Bar */}
-      <div className="mt-6">
         <div
           role="img"
           aria-label="Distribution of anime by status"
-          className="flex h-2.5 w-full overflow-hidden rounded-full bg-white/[0.04]"
+          className="mt-5 flex h-3 w-full overflow-hidden rounded-full bg-white/[0.05]"
         >
           {segments.map((s) =>
             s.value > 0 ? (
               <div
                 key={s.key}
-                className={`h-full ${s.color}`}
+                className={`h-full ${s.bar} transition-[width] duration-700`}
                 style={{ width: `${s.pct}%` }}
                 title={`${s.label}: ${s.value}`}
               />
@@ -94,38 +78,34 @@ export function ProfileStats({ stats }: ProfileStatsProps) {
           )}
         </div>
 
-        {/* Legend */}
-        <ul className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-xs">
+        <ul className="mt-6 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-5">
           {segments.map((s) => (
-            <li key={s.key} className="flex items-center gap-2">
-              <span className={`inline-block h-2 w-2 rounded-full ${s.color}`} aria-hidden="true" />
-              <span className="text-zinc-400">{s.label}</span>
-              <span className={`font-semibold ${s.text}`}>{s.value}</span>
+            <li key={s.key}>
+              <div className="flex items-center gap-2">
+                <span className={`inline-block h-2 w-2 rounded-full ${s.dot}`} aria-hidden="true" />
+                <span className="text-xs uppercase tracking-wider text-zinc-400">{s.label}</span>
+              </div>
+              <p className={`mt-1 font-mono text-xl font-semibold tabular-nums ${s.text}`}>
+                {s.value}
+              </p>
             </li>
           ))}
         </ul>
-      </div>
+      </SectionCard>
     </section>
   );
 }
 
-function Metric({
-  label,
-  value,
-  accent = false,
-}: {
-  label: string;
-  value: string;
-  accent?: boolean;
-}) {
+export function SectionCard({ children }: { children: React.ReactNode }) {
   return (
-    <div>
-      <dt className="text-xs uppercase tracking-wide text-zinc-500">{label}</dt>
-      <dd
-        className={`mt-1 font-mono text-2xl font-semibold tracking-tight ${accent ? "text-amber-300" : "text-zinc-50"}`}
-      >
-        {value}
-      </dd>
+    <div className="rounded-[28px] bg-white/[0.03] ring-1 ring-white/[0.06] backdrop-blur-md shadow-[0_8px_24px_-12px_rgba(0,0,0,0.5)] p-6 sm:p-8">
+      {children}
     </div>
+  );
+}
+
+export function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <h2 className="text-lg font-semibold tracking-tight text-white">{children}</h2>
   );
 }

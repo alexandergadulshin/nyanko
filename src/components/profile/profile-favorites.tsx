@@ -1,16 +1,16 @@
 "use client";
 
 /**
- * ProfileFavorites — three rows of favorites (anime / characters / people).
- * Each row caps at 5 items. Owner gets "Add" tiles in empty slots and a
- * remove button on hover.
+ * ProfileFavorites — Apple-style stacked card with tabbed categories.
  *
- * Add-favorite uses the AddFavoriteModal exported below.
+ * One rounded-[28px] surface. Inside: pill tabs (Anime / Characters /
+ * Voice actors), then a 5-card row with the active type's favorites.
+ * Empty slots become Add buttons (owner only). Hover shows a soft scale
+ * + brightness bump on each card.
  */
 
 import { useState } from "react";
-import { Button } from "~/components/ui/button";
-import { EmptyState } from "~/components/ui/empty-state";
+import { SectionCard } from "./profile-stats";
 import { AddFavoriteModal } from "./add-favorite-modal";
 
 export type FavoriteType = "anime" | "character" | "person";
@@ -33,10 +33,10 @@ interface ProfileFavoritesProps {
   onRemove: (type: FavoriteType, itemId: number) => Promise<void> | void;
 }
 
-const ROW_META: ReadonlyArray<{ type: FavoriteType; title: string }> = [
-  { type: "anime", title: "Favorite anime" },
-  { type: "character", title: "Favorite characters" },
-  { type: "person", title: "Favorite voice actors" },
+const TABS: ReadonlyArray<{ type: FavoriteType; label: string }> = [
+  { type: "anime", label: "Anime" },
+  { type: "character", label: "Characters" },
+  { type: "person", label: "Voice actors" },
 ];
 
 const MAX_PER_TYPE = 5;
@@ -47,58 +47,66 @@ export function ProfileFavorites({
   onAdd,
   onRemove,
 }: ProfileFavoritesProps) {
+  const [active, setActive] = useState<FavoriteType>("anime");
   const [adding, setAdding] = useState<FavoriteType | null>(null);
 
-  const byType: Record<FavoriteType, FavoriteItem[]> = {
-    anime: favorites.filter((f) => f.type === "anime"),
-    character: favorites.filter((f) => f.type === "character"),
-    person: favorites.filter((f) => f.type === "person"),
-  };
-
-  const total = favorites.length;
+  const items = favorites.filter((f) => f.type === active);
+  const slots = Array.from({ length: MAX_PER_TYPE }, (_, i) => items[i]);
 
   return (
-    <section id="favorites" className="rounded-2xl bg-white/[0.03] ring-1 ring-white/[0.06] p-6 sm:p-8">
-      <header className="mb-4 flex items-center justify-between">
-        <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-400">
-          Favorites
-        </h2>
-        {total > 0 && (
-          <span className="text-xs text-zinc-500">{total} total · {MAX_PER_TYPE} max per category</span>
-        )}
-      </header>
+    <section id="favorites">
+      <SectionCard>
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="text-lg font-semibold tracking-tight text-white">Favorites</h2>
 
-      {total === 0 && !isOwn ? (
-        <EmptyState title="No favorites yet" description="When this user adds favorites they'll show up here." />
-      ) : (
-        <div className="space-y-6">
-          {ROW_META.map((row) => (
-            <div key={row.type}>
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-sm font-medium text-zinc-200">{row.title}</h3>
-                {isOwn && byType[row.type].length < MAX_PER_TYPE && (
-                  <Button size="sm" variant="ghost" onClick={() => setAdding(row.type)}>
-                    + Add
-                  </Button>
-                )}
-              </div>
-              <div className="grid grid-cols-3 gap-3 sm:grid-cols-5">
-                {byType[row.type].map((fav) => (
-                  <FavoriteTile
-                    key={fav.id}
-                    fav={fav}
-                    isOwn={isOwn}
-                    onRemove={() => onRemove(fav.type, fav.itemId)}
-                  />
-                ))}
-                {byType[row.type].length === 0 && !isOwn && (
-                  <p className="col-span-full text-xs text-zinc-500">No {row.title.toLowerCase()} picked yet.</p>
-                )}
-              </div>
-            </div>
-          ))}
+          <div
+            role="tablist"
+            aria-label="Favorite category"
+            className="inline-flex items-center gap-1 rounded-full bg-white/[0.05] p-1 ring-1 ring-inset ring-white/[0.08]"
+          >
+            {TABS.map((t) => {
+              const isActive = active === t.type;
+              return (
+                <button
+                  key={t.type}
+                  role="tab"
+                  aria-selected={isActive}
+                  onClick={() => setActive(t.type)}
+                  className={
+                    "rounded-full px-3.5 py-1.5 text-xs font-medium transition-all " +
+                    (isActive
+                      ? "bg-white text-zinc-900 shadow-sm"
+                      : "text-zinc-300 hover:text-white hover:bg-white/[0.06]")
+                  }
+                >
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
-      )}
+
+        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
+          {slots.map((fav, idx) =>
+            fav ? (
+              <FavoriteCard
+                key={fav.id}
+                fav={fav}
+                isOwn={isOwn}
+                onRemove={() => onRemove(fav.type, fav.itemId)}
+              />
+            ) : isOwn ? (
+              <AddSlot key={`empty-${idx}`} onClick={() => setAdding(active)} />
+            ) : (
+              <div
+                key={`empty-${idx}`}
+                aria-hidden="true"
+                className="aspect-[2/3] rounded-2xl bg-white/[0.02] ring-1 ring-white/[0.04]"
+              />
+            ),
+          )}
+        </div>
+      </SectionCard>
 
       <AddFavoriteModal
         open={adding !== null}
@@ -115,7 +123,7 @@ export function ProfileFavorites({
   );
 }
 
-function FavoriteTile({
+function FavoriteCard({
   fav,
   isOwn,
   onRemove,
@@ -125,32 +133,52 @@ function FavoriteTile({
   onRemove: () => void;
 }) {
   return (
-    <div className="group relative aspect-[2/3] overflow-hidden rounded-lg bg-white/[0.04] ring-1 ring-white/[0.06]">
+    <div className="group relative aspect-[2/3] overflow-hidden rounded-2xl bg-white/[0.04] shadow-[0_8px_24px_-12px_rgba(0,0,0,0.6)] transition-transform duration-300 hover:scale-[1.025]">
       {fav.itemImage ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={fav.itemImage} alt={fav.itemTitle} className="h-full w-full object-cover" />
+        <img
+          src={fav.itemImage}
+          alt=""
+          className="h-full w-full object-cover transition-[filter] duration-300 group-hover:brightness-110"
+        />
       ) : (
         <div className="flex h-full items-center justify-center text-xs text-zinc-500">No image</div>
       )}
+
       <div
         aria-hidden="true"
-        className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-2"
+        className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent px-3 pb-3 pt-8"
       >
-        <p className="line-clamp-2 text-[11px] font-medium leading-tight text-zinc-100">
+        <p className="line-clamp-2 text-xs font-medium leading-snug text-zinc-50">
           {fav.itemTitle}
         </p>
       </div>
+
       {isOwn && (
         <button
-          aria-label={`Remove ${fav.itemTitle} from favorites`}
+          aria-label={`Remove ${fav.itemTitle}`}
           onClick={onRemove}
-          className="absolute right-1.5 top-1.5 hidden h-6 w-6 items-center justify-center rounded-full bg-black/80 text-zinc-200 ring-1 ring-white/10 transition hover:bg-rose-600 hover:text-white group-hover:flex"
+          className="absolute right-2 top-2 hidden h-7 w-7 items-center justify-center rounded-full bg-black/70 text-zinc-200 ring-1 ring-white/15 backdrop-blur-sm transition-colors hover:bg-rose-600 hover:text-white group-hover:flex"
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
           </svg>
         </button>
       )}
     </div>
+  );
+}
+
+function AddSlot({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="group flex aspect-[2/3] items-center justify-center rounded-2xl border border-dashed border-white/15 bg-white/[0.02] text-zinc-400 transition-all hover:border-white/25 hover:bg-white/[0.04] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
+    >
+      <div className="text-center">
+        <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-full bg-white/[0.06] text-xl transition-transform group-hover:scale-110">+</div>
+        <p className="mt-2 text-[11px] uppercase tracking-wider">Add</p>
+      </div>
+    </button>
   );
 }

@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { user, animeList } from "~/server/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, or } from "drizzle-orm";
 import { currentUser } from "@clerk/nextjs/server";
 import { requireDatabase, HTTP_STATUS, ERROR_MESSAGES, withErrorHandling } from "~/lib/api-utils";
 
@@ -18,19 +18,27 @@ export const GET = withErrorHandling(async (
   request: NextRequest,
   { params }: { params: Promise<{ userId: string }> }
 ) => {
-  const { userId } = await params;
+  // The dynamic segment is named `userId` for historical reasons but now
+  // accepts either a Clerk user ID or a username — whichever the visitor
+  // typed (or got redirected from).
+  const { userId: handle } = await params;
   const database = requireDatabase();
-  
+
   let [userProfile] = await database
     .select(PROFILE_COLUMNS)
     .from(user)
-    .where(eq(user.id, userId))
+    .where(or(eq(user.id, handle), eq(user.username, handle)))
     .limit(1);
 
   if (!userProfile) {
     const clerkUser = await currentUser();
-    
-    if (!clerkUser || clerkUser.id !== userId) {
+
+    // Allow self-create only when the handle matches the visitor's own
+    // Clerk ID or Clerk username.
+    if (
+      !clerkUser ||
+      (clerkUser.id !== handle && clerkUser.username !== handle)
+    ) {
       return NextResponse.json({ error: ERROR_MESSAGES.USER_NOT_FOUND }, { status: HTTP_STATUS.NOT_FOUND });
     }
 
@@ -47,10 +55,14 @@ export const GET = withErrorHandling(async (
       .returning(PROFILE_COLUMNS);
   }
 
+  if (!userProfile) {
+    return NextResponse.json({ error: ERROR_MESSAGES.USER_NOT_FOUND }, { status: HTTP_STATUS.NOT_FOUND });
+  }
+
   const userAnimeList = await database
     .select()
     .from(animeList)
-    .where(eq(animeList.userId, userId));
+    .where(eq(animeList.userId, userProfile.id));
 
   return NextResponse.json({ profile: userProfile, animeList: userAnimeList });
 });
