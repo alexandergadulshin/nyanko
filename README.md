@@ -35,6 +35,8 @@ The app reads from **two anime metadata sources** in parallel:
 
 `src/lib/multi-source.ts` (`multiSourceAPI`) fans out each request to both, merges the responses on a field-by-field basis (preferring the more complete value), and returns the combined record. If one source fails, the other transparently fills in.
 
+`src/lib/aggregator.ts` (`aggregator`) is the single entry point the rest of the app imports. It wraps the multi-source merge, caching, and rate limiting behind one typed surface — `aggregator.anime.byId`, `aggregator.search`, `aggregator.cache.invalidate`, `aggregator.health` — so pages and API routes never touch the raw clients directly.
+
 `src/server/db/schema.ts` ships an `items` + `externalIdMappings` schema so a single internal item ID maps to N external service IDs — adding a third source (Kitsu, AnimeNewsNetwork) only requires a new adapter file, not schema changes.
 
 ### Caching
@@ -66,14 +68,14 @@ Every external call funnels through `await rateLimit(source)` before issuing the
 
 ### Recommendation engine
 
-`src/lib/recommendation.ts` implements content-based scoring:
+`src/lib/recommendation/` builds personalised anime recommendations from the user's list:
 
-1. From the user's watched list, build a **taste profile**: each genre / theme / studio / demographic gets a weight, signed and scaled by the user's score for shows carrying that tag (rating-derived weight × status multiplier).
-2. For each candidate (drawn from `/top/anime` and not in the user's list), sum the user's weights across the candidate's tags, then normalize by `sqrt(tag_count)` to avoid bias toward heavily-tagged shows.
-3. Add a quality-prior bump based on the candidate's average rating.
-4. Sort descending, return top N.
+1. **Taste profile** (`profile.ts`) — weights each genre / theme / studio / demographic by the user's score and status for shows carrying that tag, and picks their top-scored entries as anchors.
+2. **Candidate generation** (`candidates.ts`) — four strategies run in parallel: shows similar to the anchors, shows from the user's top genres, currently-airing shows that match their taste, and a discovery wildcard. Each strategy's hydrated pool is cached for 30 minutes, so users with overlapping taste share warm pools.
+3. **Scoring** (`score.ts`) — an 8-feature model (genre / theme / studio / demographic affinity, quality and popularity priors, an anti-affinity penalty, a source boost), followed by an MMR rerank over Jaccard tag-set similarity so the list stays diverse instead of 20 variations on one genre.
+4. **Explanation** (`explain.ts`) — each result carries a 0–100 confidence score and a short human-readable reason ("Because you loved Cowboy Bebop").
 
-Pure, deterministic, easy to unit-test. The API route at `src/app/api/recommendations/route.ts` glues this to authenticated user state + the cached multi-source API.
+The API route at `src/app/api/recommendations/route.ts` (`GET /api/recommendations?limit=N&seed=ID`) reads the user's list, hydrates entries through the cached aggregator, and runs the pipeline.
 
 ## Local development
 
@@ -126,11 +128,12 @@ src/
     *                 # App-router pages (anime/, manga/, profile/, search/, ...)
   components/         # UI components
   lib/
+    aggregator.ts     # unified entry point over the data layer
     cache.ts          # cache backend selector + TTL constants
     cache-keys.ts     # namespaced key generators
     rate-limiter.ts   # token-bucket per source
-    multi-source.ts   # Jikan + AniList aggregator
-    recommendation.ts # taste-profile scoring engine
+    multi-source.ts   # Jikan + AniList field-by-field merge
+    recommendation/   # taste profile, candidate generation, scoring, explanations
     enhanced-api.ts   # internal-ID-aware wrapper over Jikan
     id-mapping.ts     # mapping table service (external IDs ↔ internal items)
     api-utils.ts      # HTTP status, error class, requireAuth/requireDatabase
