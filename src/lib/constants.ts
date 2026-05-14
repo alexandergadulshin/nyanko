@@ -6,7 +6,7 @@ export const APP_CONFIG = {
 
 export const ROUTES = {
   HOME: "/",
-  ADVANCED_SEARCH: "/advanced-search",
+  SEARCH: "/search",
   PROFILE: "/profile",
   SETTINGS: "/settings",
   AUTH: "/auth",
