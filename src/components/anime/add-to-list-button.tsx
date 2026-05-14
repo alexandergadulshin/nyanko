@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { useSession } from "~/lib/auth-client";
+import { useUser } from "@clerk/nextjs";
 import { FaPlus, FaCheck, FaPlay, FaPause, FaTimes, FaEye, FaStar, FaTrash } from "react-icons/fa";
 import { type UserAnimeStatus } from "~/lib/status-utils";
 
@@ -30,7 +30,7 @@ interface ListEntry {
 }
 
 export function AddToListButton({ anime }: AddToListButtonProps) {
-  const { data: session } = useSession();
+  const { isSignedIn, isLoaded } = useUser();
   const [isOpen, setIsOpen] = useState(false);
   const [currentEntry, setCurrentEntry] = useState<ListEntry | null>(null);
   const [loading, setLoading] = useState(false);
@@ -43,7 +43,7 @@ export function AddToListButton({ anime }: AddToListButtonProps) {
 
   useEffect(() => {
     setCurrentEntry(null);
-  }, [anime.mal_id, session]);
+  }, [anime.mal_id, isSignedIn]);
 
   const statusOptions = [
     { value: "planning", label: "Plan to Watch", icon: <FaEye />, color: "text-yellow-400" },
@@ -60,7 +60,7 @@ export function AddToListButton({ anime }: AddToListButtonProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!session) return;
+    if (!isSignedIn) return;
 
     setLoading(true);
     try {
@@ -96,7 +96,7 @@ export function AddToListButton({ anime }: AddToListButtonProps) {
   };
 
   const handleRemove = async () => {
-    if (!session || !currentEntry) return;
+    if (!isSignedIn || !currentEntry) return;
 
     setLoading(true);
     try {
@@ -129,7 +129,21 @@ export function AddToListButton({ anime }: AddToListButtonProps) {
     setIsOpen(true);
   };
 
-  if (!session) {
+  // While Clerk is still booting, render a neutral placeholder so we
+  // don't flash the signed-out CTA to actually-signed-in users.
+  if (!isLoaded) {
+    return (
+      <div
+        aria-hidden="true"
+        className="px-4 py-2 bg-purple-600/40 text-white/70 rounded-lg flex items-center gap-2 opacity-70"
+      >
+        <FaPlus className="w-4 h-4" />
+        Add to List
+      </div>
+    );
+  }
+
+  if (!isSignedIn) {
     return (
       <a
         href="/auth"

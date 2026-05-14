@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { useSession } from "~/lib/auth-client";
+import { useUser } from "@clerk/nextjs";
 import { FaHeart, FaRegHeart, FaSpinner } from "react-icons/fa";
 
 interface AnimeDetails {
@@ -20,14 +20,14 @@ interface AddToFavoritesButtonProps {
 }
 
 export function AddToFavoritesButton({ anime }: AddToFavoritesButtonProps) {
-  const { data: session } = useSession();
+  const { isSignedIn, isLoaded } = useUser();
   const [isFavorited, setIsFavorited] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const checkFavoriteStatus = async () => {
-      if (!session?.user?.id) return;
+      if (!isSignedIn) return;
 
       try {
         const response = await fetch(`/api/favorites?type=anime`);
@@ -42,10 +42,10 @@ export function AddToFavoritesButton({ anime }: AddToFavoritesButtonProps) {
     };
 
     checkFavoriteStatus();
-  }, [anime.mal_id, session]);
+  }, [anime.mal_id, isSignedIn]);
 
   const handleToggleFavorite = async () => {
-    if (!session?.user?.id) {
+    if (!isSignedIn) {
       setError("Please log in to add favorites");
       return;
     }
@@ -101,8 +101,9 @@ export function AddToFavoritesButton({ anime }: AddToFavoritesButtonProps) {
     }
   };
 
-  if (!session) {
-    return null; // Don't show button if not logged in
+  // Hide entirely until Clerk has resolved, then only render for signed-in users.
+  if (!isLoaded || !isSignedIn) {
+    return null;
   }
 
   return (

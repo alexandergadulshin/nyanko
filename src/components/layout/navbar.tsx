@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useUser, SignOutButton } from "@clerk/nextjs";
-import { useSession, signOut } from "~/lib/auth-client";
 import { APP_CONFIG } from "~/lib/constants";
 import { NAV_ITEMS, USER_MENU_ITEMS, GUEST_MENU_ITEMS } from "~/lib/navigation";
 import { useTheme } from "~/hooks/use-theme";
@@ -11,17 +10,14 @@ import { useTheme } from "~/hooks/use-theme";
 export function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { user, isLoaded } = useUser();
-  const { data: session, isPending } = useSession();
   const { theme, toggleTheme } = useTheme();
   const [displayName, setDisplayName] = useState<string>('');
   const [profileImage, setProfileImage] = useState<string>('');
   const userDataFetched = useRef<string>(''); // Track which user ID we've fetched for
 
-  // Determine which authentication system is active
-  const isAuthenticated = user || session;
-  const userName = displayName ?? (user ? 
-    (user.fullName ?? user.emailAddresses[0]?.emailAddress) : 
-    session?.user?.name);
+  const isAuthenticated = !!user;
+  const userName =
+    displayName || user?.fullName || user?.emailAddresses[0]?.emailAddress;
 
   // Fetch user's data from database
   useEffect(() => {
@@ -148,7 +144,7 @@ export function Navbar() {
                     <hr className="my-2 border-gray-200/60 mx-2" />
                   </div>
 
-                  {(!isLoaded || isPending) ? (
+                  {!isLoaded ? (
                     <div className="px-4 py-3 text-sm text-gray-500 text-center">
                       Loading...
                     </div>
@@ -189,31 +185,14 @@ export function Navbar() {
                       ))}
                       
                       <div className="border-t border-gray-200/60 mt-2 pt-2 mx-2">
-                        {user ? (
-                          <SignOutButton>
-                            <button
-                              onClick={closeMenu}
-                              className="block w-full text-left px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors rounded-lg"
-                            >
-                              Sign Out
-                            </button>
-                          </SignOutButton>
-                        ) : (
+                        <SignOutButton>
                           <button
-                            onClick={async () => {
-                              closeMenu();
-                              try {
-                                await signOut();
-                                window.location.href = "/";
-                              } catch (error) {
-                                console.error("Sign out error:", error);
-                              }
-                            }}
+                            onClick={closeMenu}
                             className="block w-full text-left px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors rounded-lg"
                           >
                             Sign Out
                           </button>
-                        )}
+                        </SignOutButton>
                       </div>
                     </>
                   ) : (
