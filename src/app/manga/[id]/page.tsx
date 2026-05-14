@@ -1,175 +1,93 @@
-"use client";
+import { notFound } from "next/navigation";
+import { FaStar, FaHeart, FaCalendarAlt, FaBook } from "react-icons/fa";
+import { aggregator } from "~/lib/aggregator";
+import { BackButton } from "~/components/ui/back-button";
+import { Synopsis } from "~/components/shared/synopsis";
 
-import React, { useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { FaStar, FaHeart, FaCalendarAlt, FaBook, FaArrowLeft } from "react-icons/fa";
-import { type MangaItem } from "~/utils/api";
+export const revalidate = 3600;
 
-interface DetailedMangaItem extends MangaItem {
-  titleJapanese: string | null;
-  chapters: number | null;
-  volumes: number | null;
-  type: string;
-  score: number | null;
-  scoredBy: number | null;
-  rank: number | null;
-  popularity: number | null;
-  year: number | null;
-  published: { from: string | null; to: string | null };
-  genres: string[];
-  themes: string[];
-  demographics: string[];
-  authors: string[];
-  serializations: string[];
+function formatDate(dateString: string | null | undefined) {
+  if (!dateString) return "Unknown";
+  return new Date(dateString).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
 }
 
-export default function MangaDetailPage() {
-  const params = useParams();
-  const router = useRouter();
-  const [manga, setManga] = useState<DetailedMangaItem | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+function formatPublishedPeriod(published: { from?: string | null; to?: string | null } | undefined) {
+  const from = published?.from ? formatDate(published.from) : "Unknown";
+  const to = published?.to ? formatDate(published.to) : "Ongoing";
+  return `${from} - ${to}`;
+}
 
-  const mangaId = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
+export default async function MangaDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  const mangaId = parseInt(id, 10);
+  if (Number.isNaN(mangaId)) notFound();
 
-  useEffect(() => {
-    const fetchMangaDetails = async () => {
-      if (!mangaId) return;
-      
-      try {
-        setLoading(true);
-        await new Promise(resolve => setTimeout(resolve, 200));
-        
-        let response = await fetch(`https://api.jikan.moe/v4/manga/${mangaId}`);
-        
-        if (!response.ok) {
-          if (response.status === 429) {
-            console.warn('Rate limited, waiting before retry...');
-            await new Promise(resolve => setTimeout(resolve, 3000));
-            response = await fetch(`https://api.jikan.moe/v4/manga/${mangaId}`);
-            if (!response.ok) {
-              throw new Error(`API rate limited: ${response.status}`);
-            }
-          } else {
-            throw new Error(`API error: ${response.status}`);
-          }
-        }
-        
-        const data = await response.json();
-        const mangaData = data.data;
-        
-        const detailedManga: DetailedMangaItem = {
-          id: mangaData.mal_id,
-          malId: mangaData.mal_id,
-          title: mangaData.title_english || mangaData.title,
-          titleJapanese: mangaData.title_japanese,
-          description: mangaData.synopsis || 'No description available.',
-          image: mangaData.images?.jpg?.large_image_url || mangaData.images?.jpg?.image_url,
-          status: mangaData.publishing ? 'Publishing' : 
-                  mangaData.status === 'Not yet published' ? 'Not yet published' :
-                  mangaData.status === 'Discontinued' ? 'Discontinued' : 'Finished',
-          favorites: mangaData.favorites ?? 0,
-          rating: mangaData.score ?? 0,
-          chapters: mangaData.chapters,
-          volumes: mangaData.volumes,
-          type: mangaData.type,
-          score: mangaData.score,
-          scoredBy: mangaData.scored_by,
-          rank: mangaData.rank,
-          popularity: mangaData.popularity,
-          year: mangaData.published?.from ? new Date(mangaData.published.from).getFullYear() : null,
-          published: mangaData.published || { from: null, to: null },
-          genres: mangaData.genres?.map((g: any) => g.name) || [],
-          themes: mangaData.themes?.map((t: any) => t.name) || [],
-          demographics: mangaData.demographics?.map((d: any) => d.name) || [],
-          authors: mangaData.authors?.map((a: any) => a.name) || [],
-          serializations: mangaData.serializations?.map((s: any) => s.name) || [],
-        };
-        
-        setManga(detailedManga);
-      } catch (err) {
-        setError("Failed to load manga details");
-        console.error("Error fetching manga details:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
+  const raw = await aggregator.manga.byId(mangaId).catch(() => null);
+  if (!raw) notFound();
 
-    void fetchMangaDetails();
-  }, [mangaId]);
-
-  const formatDate = (dateString: string | null) => {
-    if (!dateString) return "Unknown";
-    return new Date(dateString).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric"
-    });
+  // Same normalization the page used to do client-side, now on the server.
+  const manga = {
+    id: raw.mal_id,
+    malId: raw.mal_id,
+    title: raw.title_english ?? raw.title,
+    titleJapanese: raw.title_japanese ?? null,
+    description: raw.synopsis ?? "No description available.",
+    image:
+      raw.images?.jpg?.large_image_url ??
+      raw.images?.jpg?.image_url ??
+      "",
+    status: raw.publishing
+      ? "Publishing"
+      : raw.status === "Not yet published"
+      ? "Not yet published"
+      : raw.status === "Discontinued"
+      ? "Discontinued"
+      : "Finished",
+    favorites: raw.favorites ?? 0,
+    rating: raw.score ?? 0,
+    chapters: raw.chapters ?? null,
+    volumes: raw.volumes ?? null,
+    type: raw.type ?? "",
+    score: raw.score ?? null,
+    scoredBy: raw.scored_by ?? null,
+    rank: raw.rank ?? null,
+    popularity: raw.popularity ?? null,
+    year: raw.published?.from ? new Date(raw.published.from).getFullYear() : null,
+    published: raw.published ?? { from: null, to: null },
+    genres: raw.genres?.map((g) => g.name) ?? [],
+    themes: raw.themes?.map((t) => t.name) ?? [],
+    demographics: raw.demographics?.map((d) => d.name) ?? [],
+    authors: raw.authors?.map((a) => a.name) ?? [],
+    serializations: raw.serializations?.map((s) => s.name) ?? [],
   };
-
-  const formatPublishedPeriod = (published: { from: string | null; to: string | null }) => {
-    const from = published.from ? formatDate(published.from) : "Unknown";
-    const to = published.to ? formatDate(published.to) : "Ongoing";
-    return `${from} - ${to}`;
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#181622] light:bg-transparent flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto mb-4"></div>
-          <p className="text-white text-lg">Loading manga details...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error || !manga) {
-    return (
-      <div className="min-h-screen bg-[#181622] light:bg-transparent flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-red-400 text-lg mb-4">{error || "Manga not found"}</p>
-          <button
-            onClick={() => router.back()}
-            className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg transition-colors"
-          >
-            Go Back
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-[#181622] light:bg-transparent">
-      {/* Back Button */}
       <div className="sticky top-0 z-10 bg-[#181622]/80 light:bg-gray-100/80 backdrop-blur-sm border-b border-gray-800 light:border-gray-300">
         <div className="container mx-auto px-4 py-4">
-          <button
-            onClick={() => router.back()}
-            className="flex items-center space-x-2 text-gray-400 hover:text-white transition-colors"
-          >
-            <FaArrowLeft />
-            <span>Back</span>
-          </button>
+          <BackButton />
         </div>
       </div>
 
       <div className="container mx-auto px-4 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left Column - Image and Basic Info */}
           <div className="lg:col-span-1">
             <div className="sticky top-32">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={manga.image}
                 alt={manga.title}
                 className="w-full max-w-sm mx-auto rounded-lg shadow-2xl"
-                onError={(e) => {
-                  e.currentTarget.src = '/placeholder-manga.jpg';
-                }}
               />
-              
-              {/* Quick Stats */}
+
               <div className="mt-6 bg-gray-800/50 rounded-lg p-4">
                 <h3 className="text-white font-semibold mb-3">Quick Stats</h3>
                 <div className="space-y-2 text-sm">
@@ -208,21 +126,24 @@ export default function MangaDetailPage() {
             </div>
           </div>
 
-          {/* Right Column - Detailed Information */}
           <div className="lg:col-span-2">
-            {/* Title and Status */}
             <div className="mb-6">
               <h1 className="text-4xl font-bold text-white mb-2">{manga.title}</h1>
               {manga.titleJapanese && (
                 <h2 className="text-xl text-gray-400 mb-2">{manga.titleJapanese}</h2>
               )}
               <div className="flex items-center space-x-4">
-                <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                  manga.status === "Publishing" ? "bg-green-500/20 text-green-400" :
-                  manga.status === "Not yet published" ? "bg-blue-500/20 text-blue-400" :
-                  manga.status === "Discontinued" ? "bg-red-500/20 text-red-400" :
-                  "bg-gray-500/20 text-gray-400"
-                }`}>
+                <span
+                  className={`px-3 py-1 rounded-full text-sm font-medium ${
+                    manga.status === "Publishing"
+                      ? "bg-green-500/20 text-green-400"
+                      : manga.status === "Not yet published"
+                      ? "bg-blue-500/20 text-blue-400"
+                      : manga.status === "Discontinued"
+                      ? "bg-red-500/20 text-red-400"
+                      : "bg-gray-500/20 text-gray-400"
+                  }`}
+                >
                   {manga.status}
                 </span>
                 <span className="text-gray-400">{manga.type}</span>
@@ -230,15 +151,12 @@ export default function MangaDetailPage() {
               </div>
             </div>
 
-            {/* Synopsis */}
             <div className="mb-8">
               <h3 className="text-2xl font-semibold text-white mb-4">Synopsis</h3>
-              <p className="text-gray-300 leading-relaxed">{manga.description}</p>
+              <Synopsis text={manga.description} />
             </div>
 
-            {/* Information Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-              {/* Chapter/Volume Info */}
               <div className="bg-gray-800/30 rounded-lg p-4">
                 <h4 className="text-white font-semibold mb-2 flex items-center">
                   <FaBook className="mr-2" />
@@ -264,7 +182,6 @@ export default function MangaDetailPage() {
                 </div>
               </div>
 
-              {/* Publication Dates */}
               <div className="bg-gray-800/30 rounded-lg p-4">
                 <h4 className="text-white font-semibold mb-2 flex items-center">
                   <FaCalendarAlt className="mr-2" />
@@ -279,16 +196,12 @@ export default function MangaDetailPage() {
               </div>
             </div>
 
-            {/* Genres and Tags */}
             {manga.genres.length > 0 && (
               <div className="mb-6">
                 <h4 className="text-white font-semibold mb-3">Genres</h4>
                 <div className="flex flex-wrap gap-2">
                   {manga.genres.map((genre) => (
-                    <span
-                      key={genre}
-                      className="bg-purple-600/20 text-purple-300 px-3 py-1 rounded-full text-sm"
-                    >
+                    <span key={genre} className="bg-purple-600/20 text-purple-300 px-3 py-1 rounded-full text-sm">
                       {genre}
                     </span>
                   ))}
@@ -296,16 +209,12 @@ export default function MangaDetailPage() {
               </div>
             )}
 
-            {/* Themes */}
             {manga.themes.length > 0 && (
               <div className="mb-6">
                 <h4 className="text-white font-semibold mb-3">Themes</h4>
                 <div className="flex flex-wrap gap-2">
                   {manga.themes.map((theme) => (
-                    <span
-                      key={theme}
-                      className="bg-blue-600/20 text-blue-300 px-3 py-1 rounded-full text-sm"
-                    >
+                    <span key={theme} className="bg-blue-600/20 text-blue-300 px-3 py-1 rounded-full text-sm">
                       {theme}
                     </span>
                   ))}
@@ -313,7 +222,6 @@ export default function MangaDetailPage() {
               </div>
             )}
 
-            {/* Authors and Serializations */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {manga.authors.length > 0 && (
                 <div>

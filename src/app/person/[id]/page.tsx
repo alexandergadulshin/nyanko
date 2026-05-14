@@ -1,145 +1,56 @@
-"use client";
-
-import React, { useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { FaHeart, FaCalendarAlt, FaUser, FaArrowLeft } from "react-icons/fa";
-import { jikanAPI, type PersonItem } from "~/utils/api";
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { FaHeart, FaCalendarAlt, FaUser } from "react-icons/fa";
+import { aggregator } from "~/lib/aggregator";
 import { FavoriteButton } from "~/components/FavoriteButton";
+import { BackButton } from "~/components/ui/back-button";
+import { Synopsis } from "~/components/shared/synopsis";
 
-interface DetailedPersonItem extends Omit<PersonItem, 'about'> {
-  nameKanji: string | null;
-  nicknames: string[];
-  birthday: string | null;
-  about: string | null;
-  website_url: string | null;
-  anime: Array<{
-    position: string;
-    anime: {
-      mal_id: number;
-      title: string;
-      images: { jpg: { image_url: string } };
-    };
-  }>;
-  manga: Array<{
-    position: string;
-    manga: {
-      mal_id: number;
-      title: string;
-      images: { jpg: { image_url: string } };
-    };
-  }>;
-  voices: Array<{
-    role: string;
-    anime: {
-      mal_id: number;
-      title: string;
-      images: { jpg: { image_url: string } };
-    };
-    character: {
-      mal_id: number;
-      name: string;
-      images: { jpg: { image_url: string } };
-    };
-  }>;
+export const revalidate = 3600;
+
+function formatDate(dateString: string | null | undefined) {
+  if (!dateString) return "Unknown";
+  return new Date(dateString).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
 }
 
-export default function PersonDetailPage() {
-  const params = useParams();
-  const router = useRouter();
-  const [person, setPerson] = useState<DetailedPersonItem | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+export default async function PersonDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  const personId = parseInt(id, 10);
+  if (Number.isNaN(personId)) notFound();
 
-  const personId = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
+  const raw = await aggregator.person.byId(personId).catch(() => null);
+  if (!raw) notFound();
 
-  useEffect(() => {
-    const fetchPersonDetails = async () => {
-      if (!personId) return;
-      
-      try {
-        setLoading(true);
-        const response = await fetch(`https://api.jikan.moe/v4/people/${personId}/full`);
-        if (!response.ok) throw new Error(`API error: ${response.status}`);
-        
-        const data = await response.json();
-        const personData = data.data;
-        
-        const detailedPerson: DetailedPersonItem = {
-          id: personData.mal_id,
-          malId: personData.mal_id,
-          name: personData.name,
-          nameKanji: personData.family_name || personData.given_name,
-          nicknames: personData.alternate_names || [],
-          birthday: personData.birthday,
-          description: personData.about || 'No description available.',
-          about: personData.about,
-          image: personData.images?.jpg?.image_url || '',
-          favorites: personData.favorites ?? 0,
-          website_url: personData.website_url,
-          anime: personData.anime?.slice(0, 12) || [],
-          manga: personData.manga?.slice(0, 12) || [],
-          voices: personData.voices?.slice(0, 12) || [],
-        };
-        
-        setPerson(detailedPerson);
-      } catch (err) {
-        setError("Failed to load person details");
-        console.error("Error fetching person details:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    void fetchPersonDetails();
-  }, [personId]);
-
-  const formatDate = (dateString: string | null) => {
-    if (!dateString) return "Unknown";
-    return new Date(dateString).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric"
-    });
+  const person = {
+    id: raw.mal_id,
+    malId: raw.mal_id,
+    name: raw.name,
+    nameKanji: raw.family_name ?? raw.given_name ?? null,
+    nicknames: raw.alternate_names ?? [],
+    birthday: raw.birthday ?? null,
+    description: raw.about ?? "No description available.",
+    about: raw.about ?? null,
+    image: raw.images?.jpg?.image_url ?? "",
+    favorites: raw.favorites ?? 0,
+    website_url: raw.website_url ?? null,
+    anime: (raw.anime ?? []).slice(0, 12),
+    manga: (raw.manga ?? []).slice(0, 12),
+    voices: (raw.voices ?? []).slice(0, 12),
   };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#181622] light:bg-transparent flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto mb-4"></div>
-          <p className="text-white text-lg">Loading person details...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error || !person) {
-    return (
-      <div className="min-h-screen bg-[#181622] light:bg-transparent flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-red-400 text-lg mb-4">{error || "Person not found"}</p>
-          <button
-            onClick={() => router.back()}
-            className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg transition-colors"
-          >
-            Go Back
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-[#181622] light:bg-transparent">
       <div className="sticky top-0 z-10 bg-[#181622]/80 light:bg-gray-100/80 backdrop-blur-sm border-b border-gray-800 light:border-gray-300">
         <div className="container mx-auto px-4 py-4">
-          <button
-            onClick={() => router.back()}
-            className="flex items-center space-x-2 text-gray-400 hover:text-white transition-colors"
-          >
-            <FaArrowLeft />
-            <span>Back</span>
-          </button>
+          <BackButton />
         </div>
       </div>
 
@@ -147,16 +58,13 @@ export default function PersonDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-1">
             <div className="sticky top-32">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={person.image}
                 alt={person.name}
                 className="w-full max-w-sm mx-auto rounded-lg shadow-2xl"
-                onError={(e) => {
-                  e.currentTarget.src = '/placeholder-person.jpg';
-                }}
               />
-              
-              {/* Quick Stats */}
+
               <div className="mt-6 bg-gray-800/50 rounded-lg p-4">
                 <h3 className="text-white font-semibold mb-3">Quick Stats</h3>
                 <div className="space-y-2 text-sm">
@@ -183,9 +91,7 @@ export default function PersonDetailPage() {
             </div>
           </div>
 
-          {/* Right Column - Detailed Information */}
           <div className="lg:col-span-2">
-            {/* Title and Names */}
             <div className="mb-6">
               <h1 className="text-4xl font-bold text-white mb-2">{person.name}</h1>
               {person.nameKanji && (
@@ -194,10 +100,7 @@ export default function PersonDetailPage() {
               {person.nicknames.length > 0 && (
                 <div className="flex flex-wrap gap-2 mb-2">
                   {person.nicknames.map((nickname, index) => (
-                    <span
-                      key={index}
-                      className="bg-purple-600/20 text-purple-300 px-2 py-1 rounded text-sm"
-                    >
+                    <span key={index} className="bg-purple-600/20 text-purple-300 px-2 py-1 rounded text-sm">
                       {nickname}
                     </span>
                   ))}
@@ -224,15 +127,13 @@ export default function PersonDetailPage() {
               </div>
             </div>
 
-            {/* About */}
             {person.about && (
               <div className="mb-8">
                 <h3 className="text-2xl font-semibold text-white mb-4">About</h3>
-                <p className="text-gray-300 leading-relaxed whitespace-pre-line">{person.about}</p>
+                <Synopsis text={person.about} className="whitespace-pre-line" />
               </div>
             )}
 
-            {/* Website */}
             {person.website_url && (
               <div className="mb-6">
                 <a
@@ -246,7 +147,6 @@ export default function PersonDetailPage() {
               </div>
             )}
 
-            {/* Voice Acting Roles */}
             {person.voices.length > 0 && (
               <div className="mb-8">
                 <h3 className="text-2xl font-semibold text-white mb-4">Voice Acting Roles</h3>
@@ -254,88 +154,85 @@ export default function PersonDetailPage() {
                   {person.voices.map((voice, index) => (
                     <div key={index} className="bg-gray-800/30 rounded-lg p-4">
                       <div className="flex items-center space-x-3 mb-2">
-                        <img
-                          src={voice.character.images.jpg.image_url}
-                          alt={voice.character.name}
-                          className="w-12 h-12 rounded-full object-cover"
-                          onError={(e) => {
-                            e.currentTarget.src = '/placeholder-character.jpg';
-                          }}
-                        />
-                        <div>
-                          <div className="text-white font-medium">{voice.character.name}</div>
-                          <div className="text-gray-400 text-sm">{voice.role}</div>
-                        </div>
+                        <Link
+                          href={`/character/${voice.character.mal_id}`}
+                          className="flex items-center space-x-3 hover:opacity-80 transition-opacity"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={voice.character.images.jpg.image_url}
+                            alt={voice.character.name}
+                            className="w-12 h-12 rounded-full object-cover"
+                          />
+                          <div>
+                            <div className="text-white font-medium">{voice.character.name}</div>
+                            <div className="text-gray-400 text-sm">{voice.role}</div>
+                          </div>
+                        </Link>
                       </div>
-                      <div 
-                        className="text-purple-300 text-sm hover:text-purple-200 cursor-pointer"
-                        onClick={() => router.push(`/anime/${voice.anime.mal_id}`)}
+                      <Link
+                        href={`/anime/${voice.anime.mal_id}`}
+                        className="text-purple-300 text-sm hover:text-purple-200 inline-block"
                       >
                         from {voice.anime.title}
-                      </div>
+                      </Link>
                     </div>
                   ))}
                 </div>
               </div>
             )}
 
-            {/* Anime Works */}
             {person.anime.length > 0 && (
               <div className="mb-8">
                 <h3 className="text-2xl font-semibold text-white mb-4">Anime Works</h3>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-                  {person.anime.map((anime, index) => (
-                    <div
+                  {person.anime.map((credit, index) => (
+                    <Link
                       key={index}
-                      className="bg-gray-800/30 rounded-lg overflow-hidden hover:bg-gray-700/30 transition-colors cursor-pointer"
-                      onClick={() => router.push(`/anime/${anime.anime.mal_id}`)}
+                      href={`/anime/${credit.anime.mal_id}`}
+                      className="bg-gray-800/30 rounded-lg overflow-hidden hover:bg-gray-700/30 transition-colors"
                     >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src={anime.anime.images.jpg.image_url}
-                        alt={anime.anime.title}
+                        src={credit.anime.images.jpg.image_url}
+                        alt={credit.anime.title}
                         className="w-full aspect-[3/4] object-cover"
-                        onError={(e) => {
-                          e.currentTarget.src = '/placeholder-anime.jpg';
-                        }}
                       />
                       <div className="p-3">
                         <div className="text-white text-sm font-medium line-clamp-2 mb-1">
-                          {anime.anime.title}
+                          {credit.anime.title}
                         </div>
-                        <div className="text-gray-400 text-xs">{anime.position}</div>
+                        <div className="text-gray-400 text-xs">{credit.position}</div>
                       </div>
-                    </div>
+                    </Link>
                   ))}
                 </div>
               </div>
             )}
 
-            {/* Manga Works */}
             {person.manga.length > 0 && (
               <div className="mb-8">
                 <h3 className="text-2xl font-semibold text-white mb-4">Manga Works</h3>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-                  {person.manga.map((manga, index) => (
-                    <div
+                  {person.manga.map((credit, index) => (
+                    <Link
                       key={index}
-                      className="bg-gray-800/30 rounded-lg overflow-hidden hover:bg-gray-700/30 transition-colors cursor-pointer"
-                      onClick={() => router.push(`/manga/${manga.manga.mal_id}`)}
+                      href={`/manga/${credit.manga.mal_id}`}
+                      className="bg-gray-800/30 rounded-lg overflow-hidden hover:bg-gray-700/30 transition-colors"
                     >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src={manga.manga.images.jpg.image_url}
-                        alt={manga.manga.title}
+                        src={credit.manga.images.jpg.image_url}
+                        alt={credit.manga.title}
                         className="w-full aspect-[3/4] object-cover"
-                        onError={(e) => {
-                          e.currentTarget.src = '/placeholder-manga.jpg';
-                        }}
                       />
                       <div className="p-3">
                         <div className="text-white text-sm font-medium line-clamp-2 mb-1">
-                          {manga.manga.title}
+                          {credit.manga.title}
                         </div>
-                        <div className="text-gray-400 text-xs">{manga.position}</div>
+                        <div className="text-gray-400 text-xs">{credit.position}</div>
                       </div>
-                    </div>
+                    </Link>
                   ))}
                 </div>
               </div>

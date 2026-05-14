@@ -1,140 +1,54 @@
-"use client";
-
-import React, { useState, useEffect, useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { FaHeart, FaUser, FaArrowLeft } from "react-icons/fa";
-import { type CharacterItem } from "~/utils/api";
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { FaHeart, FaUser } from "react-icons/fa";
+import { aggregator } from "~/lib/aggregator";
 import { FavoriteButton } from "~/components/FavoriteButton";
+import { BackButton } from "~/components/ui/back-button";
+import { Synopsis } from "~/components/shared/synopsis";
 
-const API_BASE = 'https://api.jikan.moe/v4';
-const PLACEHOLDER_IMAGES = {
-  character: '/placeholder-character.jpg',
-  person: '/placeholder-person.jpg',
-  anime: '/placeholder-anime.jpg',
-  manga: '/placeholder-manga.jpg'
-} as const;
+export const revalidate = 3600;
 
 const LIMITS = {
   animeography: 12,
   mangaography: 12,
-  voiceActors: 8
+  voiceActors: 8,
 } as const;
 
-interface DetailedCharacterItem extends Omit<CharacterItem, 'about'> {
-  nameKanji: string | null;
-  nicknames: string[];
-  about: string | null;
-  animeography: Array<{
-    role: string;
-    anime: {
-      mal_id: number;
-      title: string;
-      images: { jpg: { image_url: string } };
-    };
-  }>;
-  mangaography: Array<{
-    role: string;
-    manga: {
-      mal_id: number;
-      title: string;
-      images: { jpg: { image_url: string } };
-    };
-  }>;
-  voiceActors: Array<{
-    language: string;
-    person: {
-      mal_id: number;
-      name: string;
-      images: { jpg: { image_url: string } };
-    };
-  }>;
-}
+export default async function CharacterDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  const characterId = parseInt(id, 10);
+  if (Number.isNaN(characterId)) notFound();
 
-export default function CharacterDetailPage() {
-  const params = useParams();
-  const router = useRouter();
-  const [character, setCharacter] = useState<DetailedCharacterItem | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const raw = await aggregator.character.byId(characterId).catch(() => null);
+  if (!raw) notFound();
 
-  const characterId = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
-
-  const fetchCharacterDetails = useCallback(async () => {
-    if (!characterId) return;
-    
-    try {
-      setLoading(true);
-      const response = await fetch(`${API_BASE}/characters/${characterId}/full`);
-      if (!response.ok) throw new Error(`API error: ${response.status}`);
-      
-      const { data: characterData } = await response.json();
-      
-      const detailedCharacter: DetailedCharacterItem = {
-        id: characterData.mal_id,
-        malId: characterData.mal_id,
-        name: characterData.name,
-        nameKanji: characterData.name_kanji,
-        nicknames: characterData.nicknames || [],
-        description: characterData.about || 'No description available.',
-        about: characterData.about,
-        image: characterData.images?.jpg?.image_url || characterData.images?.webp?.image_url || '',
-        favorites: characterData.favorites ?? 0,
-        animeography: characterData.anime?.slice(0, LIMITS.animeography) || [],
-        mangaography: characterData.manga?.slice(0, LIMITS.mangaography) || [],
-        voiceActors: characterData.voices?.slice(0, LIMITS.voiceActors) || [],
-      };
-      
-      setCharacter(detailedCharacter);
-    } catch (err) {
-      setError("Failed to load character details");
-      console.error("Error fetching character details:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [characterId]);
-
-  useEffect(() => {
-    void fetchCharacterDetails();
-  }, [fetchCharacterDetails]);
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#181622] light:bg-transparent flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto mb-4"></div>
-          <p className="text-white text-lg">Loading character details...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error || !character) {
-    return (
-      <div className="min-h-screen bg-[#181622] light:bg-transparent flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-red-400 text-lg mb-4">{error || "Character not found"}</p>
-          <button
-            onClick={() => router.back()}
-            className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg transition-colors"
-          >
-            Go Back
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const character = {
+    id: raw.mal_id,
+    malId: raw.mal_id,
+    name: raw.name,
+    nameKanji: raw.name_kanji ?? null,
+    nicknames: raw.nicknames ?? [],
+    description: raw.about ?? "No description available.",
+    about: raw.about ?? null,
+    image:
+      raw.images?.jpg?.image_url ??
+      raw.images?.webp?.image_url ??
+      "",
+    favorites: raw.favorites ?? 0,
+    animeography: (raw.anime ?? []).slice(0, LIMITS.animeography),
+    mangaography: (raw.manga ?? []).slice(0, LIMITS.mangaography),
+    voiceActors: (raw.voices ?? []).slice(0, LIMITS.voiceActors),
+  };
 
   return (
     <div className="min-h-screen bg-[#181622] light:bg-transparent">
       <div className="sticky top-0 z-10 bg-[#181622]/80 light:bg-gray-100/80 backdrop-blur-sm border-b border-gray-800 light:border-gray-300">
         <div className="container mx-auto px-4 py-4">
-          <button
-            onClick={() => router.back()}
-            className="flex items-center space-x-2 text-gray-400 hover:text-white transition-colors"
-          >
-            <FaArrowLeft />
-            <span>Back</span>
-          </button>
+          <BackButton />
         </div>
       </div>
 
@@ -142,15 +56,13 @@ export default function CharacterDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-1">
             <div className="sticky top-32">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={character.image}
                 alt={character.name}
                 className="w-full max-w-sm mx-auto rounded-lg shadow-2xl"
-                onError={(e) => {
-                  e.currentTarget.src = PLACEHOLDER_IMAGES.character;
-                }}
               />
-              
+
               <div className="mt-6 bg-gray-800/50 rounded-lg p-4">
                 <h3 className="text-white font-semibold mb-3">Quick Stats</h3>
                 <div className="space-y-2 text-sm">
@@ -208,7 +120,7 @@ export default function CharacterDetailPage() {
             {character.about && (
               <div className="mb-8">
                 <h3 className="text-2xl font-semibold text-white mb-4">About</h3>
-                <p className="text-gray-300 leading-relaxed whitespace-pre-line">{character.about}</p>
+                <Synopsis text={character.about} className="whitespace-pre-line" />
               </div>
             )}
 
@@ -217,20 +129,22 @@ export default function CharacterDetailPage() {
                 <h3 className="text-2xl font-semibold text-white mb-4">Voice Actors</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {character.voiceActors.map((va, index) => (
-                    <div key={index} className="bg-gray-800/30 rounded-lg p-4 flex items-center space-x-3">
+                    <Link
+                      key={index}
+                      href={`/person/${va.person.mal_id}`}
+                      className="bg-gray-800/30 rounded-lg p-4 flex items-center space-x-3 hover:bg-gray-700/30 transition-colors"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={va.person.images.jpg.image_url}
                         alt={va.person.name}
                         className="w-12 h-12 rounded-full object-cover"
-                        onError={(e) => {
-                          e.currentTarget.src = PLACEHOLDER_IMAGES.person;
-                        }}
                       />
                       <div>
                         <div className="text-white font-medium">{va.person.name}</div>
                         <div className="text-gray-400 text-sm">{va.language}</div>
                       </div>
-                    </div>
+                    </Link>
                   ))}
                 </div>
               </div>
@@ -240,27 +154,25 @@ export default function CharacterDetailPage() {
               <div className="mb-8">
                 <h3 className="text-2xl font-semibold text-white mb-4">Animeography</h3>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-                  {character.animeography.map((anime, index) => (
-                    <div
+                  {character.animeography.map((entry, index) => (
+                    <Link
                       key={index}
-                      className="bg-gray-800/30 rounded-lg overflow-hidden hover:bg-gray-700/30 transition-colors cursor-pointer"
-                      onClick={() => router.push(`/anime/${anime.anime.mal_id}`)}
+                      href={`/anime/${entry.anime.mal_id}`}
+                      className="bg-gray-800/30 rounded-lg overflow-hidden hover:bg-gray-700/30 transition-colors"
                     >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src={anime.anime.images.jpg.image_url}
-                        alt={anime.anime.title}
+                        src={entry.anime.images.jpg.image_url}
+                        alt={entry.anime.title}
                         className="w-full aspect-[3/4] object-cover"
-                        onError={(e) => {
-                          e.currentTarget.src = PLACEHOLDER_IMAGES.anime;
-                        }}
                       />
                       <div className="p-3">
                         <div className="text-white text-sm font-medium line-clamp-2 mb-1">
-                          {anime.anime.title}
+                          {entry.anime.title}
                         </div>
-                        <div className="text-gray-400 text-xs">{anime.role}</div>
+                        <div className="text-gray-400 text-xs">{entry.role}</div>
                       </div>
-                    </div>
+                    </Link>
                   ))}
                 </div>
               </div>
@@ -270,27 +182,25 @@ export default function CharacterDetailPage() {
               <div className="mb-8">
                 <h3 className="text-2xl font-semibold text-white mb-4">Mangaography</h3>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-                  {character.mangaography.map((manga, index) => (
-                    <div
+                  {character.mangaography.map((entry, index) => (
+                    <Link
                       key={index}
-                      className="bg-gray-800/30 rounded-lg overflow-hidden hover:bg-gray-700/30 transition-colors cursor-pointer"
-                      onClick={() => router.push(`/manga/${manga.manga.mal_id}`)}
+                      href={`/manga/${entry.manga.mal_id}`}
+                      className="bg-gray-800/30 rounded-lg overflow-hidden hover:bg-gray-700/30 transition-colors"
                     >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src={manga.manga.images.jpg.image_url}
-                        alt={manga.manga.title}
+                        src={entry.manga.images.jpg.image_url}
+                        alt={entry.manga.title}
                         className="w-full aspect-[3/4] object-cover"
-                        onError={(e) => {
-                          e.currentTarget.src = PLACEHOLDER_IMAGES.manga;
-                        }}
                       />
                       <div className="p-3">
                         <div className="text-white text-sm font-medium line-clamp-2 mb-1">
-                          {manga.manga.title}
+                          {entry.manga.title}
                         </div>
-                        <div className="text-gray-400 text-xs">{manga.role}</div>
+                        <div className="text-gray-400 text-xs">{entry.role}</div>
                       </div>
-                    </div>
+                    </Link>
                   ))}
                 </div>
               </div>

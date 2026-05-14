@@ -1,112 +1,66 @@
-"use client";
-
-import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { FaStar, FaHeart, FaCalendarAlt, FaTv, FaArrowLeft } from "react-icons/fa";
-import { jikanAPI, type DetailedAnimeItem } from "~/utils/api";
+import { notFound } from "next/navigation";
+import { FaStar, FaHeart, FaCalendarAlt, FaTv } from "react-icons/fa";
+import { aggregator } from "~/lib/aggregator";
+import type { DetailedAnimeItem } from "~/utils/api";
 import { AddToListButton } from "~/components/anime/add-to-list-button";
 import { AddToFavoritesButton } from "~/components/anime/add-to-favorites-button";
+import { BackButton } from "~/components/ui/back-button";
+import { Synopsis } from "~/components/shared/synopsis";
+
+// ISR — the detail HTML is cached at the edge for an hour. Combined with
+// the in-process aggregator cache, warm cache page renders are sub-ms.
+export const revalidate = 3600;
 
 const STATUS_COLORS = {
-  'Airing Now': 'bg-green-500/20 text-green-400',
-  'Scheduled': 'bg-blue-500/20 text-blue-400', 
-  'Movie': 'bg-purple-500/20 text-purple-400',
-  default: 'bg-gray-500/20 text-gray-400'
+  "Airing Now": "bg-green-500/20 text-green-400",
+  Scheduled: "bg-blue-500/20 text-blue-400",
+  Movie: "bg-purple-500/20 text-purple-400",
+  default: "bg-gray-500/20 text-gray-400",
 } as const;
 
 const DATE_FORMAT_OPTIONS: Intl.DateTimeFormatOptions = {
   year: "numeric",
-  month: "long", 
-  day: "numeric"
+  month: "long",
+  day: "numeric",
 };
 
-export default function AnimeDetailPage() {
-  const params = useParams();
-  const router = useRouter();
-  const [anime, setAnime] = useState<DetailedAnimeItem | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+function formatDate(dateString: string | null) {
+  if (!dateString) return "Unknown";
+  return new Date(dateString).toLocaleDateString("en-US", DATE_FORMAT_OPTIONS);
+}
 
-  const animeId = Array.isArray(params.id) ? params.id[0] : params.id ?? "";
+function formatAiredPeriod(aired: { from: string | null; to: string | null }) {
+  const from = aired.from ? formatDate(aired.from) : "Unknown";
+  const to = aired.to ? formatDate(aired.to) : "Ongoing";
+  return `${from} - ${to}`;
+}
 
-  const animeData = useMemo(() => {
-    if (!anime) return null;
-    return {
-      mal_id: parseInt(animeId ?? "0"),
-      title: anime.title,
-      images: { jpg: { image_url: anime.image } },
-      episodes: anime.episodes ?? undefined
-    };
-  }, [anime, animeId]);
+export default async function AnimeDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  const animeId = parseInt(id, 10);
+  if (Number.isNaN(animeId)) notFound();
 
-  const fetchAnimeDetails = useCallback(async () => {
-    if (!animeId) return;
-    
-    try {
-      setLoading(true);
-      const animeDetails = await jikanAPI.getAnimeById(parseInt(animeId));
-      setAnime(animeDetails);
-    } catch (err) {
-      setError("Failed to load anime details");
-      console.error("Error fetching anime details:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [animeId]);
+  const anime: DetailedAnimeItem | null = await aggregator.anime
+    .byId(animeId)
+    .catch(() => null);
+  if (!anime) notFound();
 
-  useEffect(() => {
-    void fetchAnimeDetails();
-  }, [fetchAnimeDetails]);
-
-  const formatDate = useCallback((dateString: string | null) => {
-    if (!dateString) return "Unknown";
-    return new Date(dateString).toLocaleDateString("en-US", DATE_FORMAT_OPTIONS);
-  }, []);
-
-  const formatAiredPeriod = useCallback((aired: { from: string | null; to: string | null }) => {
-    const from = aired.from ? formatDate(aired.from) : "Unknown";
-    const to = aired.to ? formatDate(aired.to) : "Ongoing";
-    return `${from} - ${to}`;
-  }, [formatDate]);
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#181622] light:bg-transparent flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto mb-4"></div>
-          <p className="text-white light:text-gray-800 text-lg">Loading anime details...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error || !anime) {
-    return (
-      <div className="min-h-screen bg-[#181622] light:bg-transparent flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-red-400 light:text-red-600 text-lg mb-4">{error ?? "Anime not found"}</p>
-          <button
-            onClick={() => router.back()}
-            className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg transition-colors"
-          >
-            Go Back
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const animeData = {
+    mal_id: animeId,
+    title: anime.title,
+    images: { jpg: { image_url: anime.image } },
+    episodes: anime.episodes ?? undefined,
+  };
 
   return (
     <div className="min-h-screen bg-[#181622] light:bg-transparent">
       <div className="sticky top-0 z-10 bg-[#181622]/80 light:bg-gray-100/80 backdrop-blur-sm border-b border-gray-800 light:border-gray-300">
         <div className="container mx-auto px-4 py-4">
-          <button
-            onClick={() => router.back()}
-            className="flex items-center space-x-2 text-gray-400 light:text-gray-600 hover:text-white light:hover:text-gray-800 transition-colors"
-          >
-            <FaArrowLeft />
-            <span>Back</span>
-          </button>
+          <BackButton />
         </div>
       </div>
 
@@ -114,22 +68,18 @@ export default function AnimeDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-1">
             <div className="sticky top-32">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={anime.image}
                 alt={anime.title}
                 className="w-full max-w-sm mx-auto rounded-lg shadow-2xl"
-                onError={(e) => {
-                  e.currentTarget.src = '/placeholder-anime.jpg';
-                }}
               />
-              
-              {animeData && (
-                <div className="mt-6 flex flex-col sm:flex-row gap-3">
-                  <AddToListButton anime={animeData} />
-                  <AddToFavoritesButton anime={animeData} />
-                </div>
-              )}
-              
+
+              <div className="mt-6 flex flex-col sm:flex-row gap-3">
+                <AddToListButton anime={animeData} />
+                <AddToFavoritesButton anime={animeData} />
+              </div>
+
               <div className="mt-6 bg-gray-800/50 rounded-lg p-4">
                 <h3 className="text-white font-semibold mb-3">Quick Stats</h3>
                 <div className="space-y-2 text-sm">
@@ -175,9 +125,12 @@ export default function AnimeDetailPage() {
                 <h2 className="text-xl text-gray-400 mb-2">{anime.titleJapanese}</h2>
               )}
               <div className="flex items-center space-x-4">
-                <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                  STATUS_COLORS[anime.status as keyof typeof STATUS_COLORS] || STATUS_COLORS.default
-                }`}>
+                <span
+                  className={`px-3 py-1 rounded-full text-sm font-medium ${
+                    STATUS_COLORS[anime.status as keyof typeof STATUS_COLORS] ??
+                    STATUS_COLORS.default
+                  }`}
+                >
                   {anime.status}
                 </span>
                 <span className="text-gray-400">{anime.type}</span>
@@ -187,7 +140,7 @@ export default function AnimeDetailPage() {
 
             <div className="mb-8">
               <h3 className="text-2xl font-semibold text-white mb-4">Synopsis</h3>
-              <p className="text-gray-300 leading-relaxed">{anime.description}</p>
+              <Synopsis text={anime.description} />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
@@ -249,10 +202,7 @@ export default function AnimeDetailPage() {
                 <h4 className="text-white font-semibold mb-3">Genres</h4>
                 <div className="flex flex-wrap gap-2">
                   {anime.genres.map((genre) => (
-                    <span
-                      key={genre}
-                      className="bg-purple-600/20 text-purple-300 px-3 py-1 rounded-full text-sm"
-                    >
+                    <span key={genre} className="bg-purple-600/20 text-purple-300 px-3 py-1 rounded-full text-sm">
                       {genre}
                     </span>
                   ))}
@@ -265,10 +215,7 @@ export default function AnimeDetailPage() {
                 <h4 className="text-white font-semibold mb-3">Themes</h4>
                 <div className="flex flex-wrap gap-2">
                   {anime.themes.map((theme) => (
-                    <span
-                      key={theme}
-                      className="bg-blue-600/20 text-blue-300 px-3 py-1 rounded-full text-sm"
-                    >
+                    <span key={theme} className="bg-blue-600/20 text-blue-300 px-3 py-1 rounded-full text-sm">
                       {theme}
                     </span>
                   ))}
