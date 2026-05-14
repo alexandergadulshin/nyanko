@@ -3,11 +3,18 @@
 import React from "react";
 import { useCarousel } from "~/hooks/use-carousel";
 import { UnifiedCarousel } from "~/components/shared/unified-carousel";
+import type { AnimeItem } from "~/utils/api";
 
-export const AnimeCarousel = React.memo(() => {
-  const { data, loading, error } = useCarousel({
-    fetchType: 'currentlyAiring',
-    limit: 16
+interface Props {
+  /** Server-prefetched data. When provided, no client fetch happens. */
+  initialData?: readonly AnimeItem[];
+}
+
+export const AnimeCarousel = React.memo(function AnimeCarousel({ initialData }: Props) {
+  const { data, loading, error } = useCarousel<AnimeItem>({
+    fetchType: "currentlyAiring",
+    limit: 16,
+    initialData,
   });
 
   return (
@@ -20,10 +27,8 @@ export const AnimeCarousel = React.memo(() => {
       showSearchBar={true}
       swiperOptions={{
         autoplay: true,
-        autoplayDelay: 3200
+        autoplayDelay: 3200,
       }}
     />
   );
 });
-
-AnimeCarousel.displayName = 'AnimeCarousel';

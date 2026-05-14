@@ -10,6 +10,12 @@ interface UseCarouselOptions {
   limit?: number;
   autoRefresh?: boolean;
   refreshInterval?: number;
+  /**
+   * Server-prefetched data. When present we seed state with this value
+   * and skip the client-side fetch on mount — first paint shows real
+   * content. Falls back to client fetching when undefined.
+   */
+  initialData?: readonly (AnimeItem | MangaItem)[] | null;
 }
 
 interface UseCarouselReturn<T> {
@@ -32,22 +38,31 @@ const DEFAULT_LIMIT = 16;
 export function useCarousel<T extends AnimeItem | MangaItem>(
   options: UseCarouselOptions
 ): UseCarouselReturn<T> {
-  const { fetchType, limit = DEFAULT_LIMIT, autoRefresh = false, refreshInterval = DEFAULT_REFRESH_INTERVAL } = options;
-  
-  const [data, setData] = useState<T[]>([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    fetchType,
+    limit = DEFAULT_LIMIT,
+    autoRefresh = false,
+    refreshInterval = DEFAULT_REFRESH_INTERVAL,
+    initialData,
+  } = options;
+
+  const hasInitial = !!initialData && initialData.length > 0;
+  const [data, setData] = useState<T[]>(() =>
+    hasInitial ? ([...initialData!] as T[]) : []
+  );
+  const [loading, setLoading] = useState(!hasInitial);
   const [error, setError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      
+
       const fetchMethod = FETCH_METHODS[fetchType];
       if (!fetchMethod) {
         throw new Error(`Unknown fetch type: ${fetchType}`);
       }
-      
+
       const result = await fetchMethod(limit) as T[];
       setData(result);
     } catch (err) {
@@ -58,8 +73,9 @@ export function useCarousel<T extends AnimeItem | MangaItem>(
   }, [fetchType, limit]);
 
   useEffect(() => {
-    void fetchData();
-  }, [fetchData]);
+    // Skip the initial client fetch when the server already gave us data.
+    if (!hasInitial) void fetchData();
+  }, [fetchData, hasInitial]);
 
   useEffect(() => {
     if (autoRefresh && refreshInterval > 0) {

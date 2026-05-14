@@ -1,47 +1,43 @@
 "use client";
 
-import React, { lazy, Suspense } from "react";
+/**
+ * CarouselWrapper — composition layer for the three home-page carousels.
+ *
+ * Accepts server-prefetched data via props. When data is provided, the
+ * inner carousel components skip their client fetch and the first paint
+ * shows real content. When props are absent (the wrapper used elsewhere),
+ * the carousels fall back to client-side fetching.
+ *
+ * We dropped the previous `lazy(() => import(...))` layering. With the
+ * page now a Server Component, the carousels render server-side too;
+ * pretending they're heavy enough to deserve their own JS-chunk boundary
+ * was costing TypeScript ergonomics without a real runtime win.
+ */
 
-// Lazy load heavy carousel components
-const AnimeCarousel = lazy(() => import("./anime-carousel").then(module => ({ default: module.AnimeCarousel })));
-const TopAnimeCarousel = lazy(() => import("./top-anime-carousel").then(module => ({ default: module.TopAnimeCarousel })));
-const TopMangaCarousel = lazy(() => import("./top-manga-carousel").then(module => ({ default: module.TopMangaCarousel })));
+import React from "react";
+import type { AnimeItem, MangaItem } from "~/utils/api";
+import { AnimeCarousel } from "./anime-carousel";
+import { TopAnimeCarousel } from "./top-anime-carousel";
+import { TopMangaCarousel } from "./top-manga-carousel";
 
-const CarouselSkeleton = () => (
-  <div className="w-full">
-    <div className="flex items-center justify-center h-64">
-      <div className="animate-pulse space-y-4 w-full max-w-4xl">
-        <div className="h-8 bg-gray-700 rounded w-1/3"></div>
-        <div className="flex space-x-4">
-          {Array.from({ length: 3 }, (_, i) => (
-            <div key={i} className="flex-1 space-y-2">
-              <div className="h-48 bg-gray-700 rounded"></div>
-              <div className="h-4 bg-gray-700 rounded"></div>
-              <div className="h-3 bg-gray-700 rounded w-2/3"></div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  </div>
-);
+interface Props {
+  airingData?: readonly AnimeItem[];
+  topAnimeData?: readonly AnimeItem[];
+  topMangaData?: readonly MangaItem[];
+}
 
-export const CarouselWrapper = React.memo(() => {
+export const CarouselWrapper = React.memo(function CarouselWrapper({
+  airingData,
+  topAnimeData,
+  topMangaData,
+}: Props) {
   return (
     <>
-      <Suspense fallback={<CarouselSkeleton />}>
-        <AnimeCarousel />
-      </Suspense>
+      <AnimeCarousel initialData={airingData} />
       <div className="mt-6">
-        <Suspense fallback={<CarouselSkeleton />}>
-          <TopAnimeCarousel />
-        </Suspense>
+        <TopAnimeCarousel initialData={topAnimeData} />
       </div>
-      <Suspense fallback={<CarouselSkeleton />}>
-        <TopMangaCarousel />
-      </Suspense>
+      <TopMangaCarousel initialData={topMangaData} />
     </>
   );
 });
-
-CarouselWrapper.displayName = 'CarouselWrapper';

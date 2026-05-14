@@ -3,11 +3,17 @@
 import React from "react";
 import { useCarousel } from "~/hooks/use-carousel";
 import { UnifiedCarousel } from "~/components/shared/unified-carousel";
+import type { AnimeItem } from "~/utils/api";
 
-export const TopAnimeCarousel = React.memo(() => {
-  const { data, loading, error } = useCarousel({
+interface Props {
+  initialData?: readonly AnimeItem[];
+}
+
+export const TopAnimeCarousel = React.memo(function TopAnimeCarousel({ initialData }: Props) {
+  const { data, loading, error } = useCarousel<AnimeItem>({
     fetchType: 'topAnime',
-    limit: 16
+    limit: 16,
+    initialData,
   });
 
   return (
@@ -37,5 +43,3 @@ export const TopAnimeCarousel = React.memo(() => {
     </div>
   );
 });
-
-TopAnimeCarousel.displayName = 'TopAnimeCarousel';
