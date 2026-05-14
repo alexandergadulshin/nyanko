@@ -11,6 +11,7 @@
 
 import { aggregator, type DetailedAnimeItem } from "~/lib/aggregator";
 import { cache, TTL } from "~/lib/cache";
+import { seriesKey, hasSeasonMarker } from "~/lib/series";
 import type {
   CandidateData,
   CandidateSource,
@@ -210,4 +211,59 @@ export async function generateSeedCandidates(
     });
   }
   return { candidates, strategies: ["similar"] };
+}
+
+/* --------------------------- season collapsing ---------------------------- */
+
+/**
+ * Collapse seasons / sequels of the same series down to a single
+ * representative, with first-season priority:
+ *
+ *   - Prefer the entry whose title has no season marker — that's season 1.
+ *   - Otherwise fall back to the lowest MAL ID (stable, usually the earliest).
+ *   - If a series only has later seasons as candidates AND the user hasn't
+ *     watched any of it, drop the series — we shouldn't tell someone to jump
+ *     in at "Season 2" with no season-1 entry to point them at. When the
+ *     user *has* watched an earlier season, that leftover later season is
+ *     exactly the next one to recommend.
+ *
+ * The representative is deterministic, so the recommendation route can
+ * exclude one shown pick and have the whole series drop out of the next
+ * re-roll instead of cycling through season 2, 3, …
+ */
+export function collapseSeasons(
+  candidates: Map<number, CandidateData>,
+  watchedTitles: string[],
+): Map<number, CandidateData> {
+  const watchedSeries = new Set(watchedTitles.map(seriesKey));
+
+  const bySeries = new Map<string, CandidateData[]>();
+  for (const c of candidates.values()) {
+    const key = seriesKey(c.details.title);
+    const group = bySeries.get(key);
+    if (group) group.push(c);
+    else bySeries.set(key, [c]);
+  }
+
+  const reps = new Map<number, CandidateData>();
+  for (const [key, group] of bySeries) {
+    group.sort((a, b) => a.details.malId - b.details.malId);
+    const base = group.find((g) => !hasSeasonMarker(g.details.title));
+    const rep = base ?? group[0];
+    if (!rep) continue;
+
+    // No season-1 entry available and the user hasn't started this series —
+    // skip it rather than recommend a mid-series jumping-on point.
+    if (hasSeasonMarker(rep.details.title) && !watchedSeries.has(key)) continue;
+
+    const sources = new Set(rep.sources);
+    let anchor = rep.anchor;
+    for (const g of group) {
+      if (g === rep) continue;
+      for (const s of g.sources) sources.add(s);
+      if (!anchor && g.anchor) anchor = g.anchor;
+    }
+    reps.set(rep.details.malId, { details: rep.details, sources, anchor });
+  }
+  return reps;
 }

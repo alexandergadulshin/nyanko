@@ -20,6 +20,7 @@ import { buildTasteProfile } from "./profile";
 import {
   generateCandidates,
   generateSeedCandidates,
+  collapseSeasons,
 } from "./candidates";
 import { scoreAll, mmrRerank, confidenceOf } from "./score";
 import { explain } from "./explain";
@@ -27,6 +28,7 @@ import type {
   RecommendInput,
   RecommendOutput,
   Recommendation,
+  CandidateData,
   CandidateSource,
 } from "./types";
 
@@ -40,18 +42,33 @@ export async function recommend(input: RecommendInput): Promise<RecommendOutput>
 
   /* -------------------------- profile + candidates -------------------------- */
   const profile = buildTasteProfile(input.entries);
-  const excludeMalIds = new Set(input.entries.map((e) => e.malId));
+  // Generators only filter the user's own list. Season-collapse and the
+  // caller's `exclude` (already-seen / disliked picks) are applied *after*
+  // generation, so dropping one season drops the whole series.
+  const ownListIds = new Set(input.entries.map((e) => e.malId));
 
-  let candidates;
+  let rawCandidates: Map<number, CandidateData>;
   let strategies: CandidateSource[];
   if (isSeedMode && input.seedMalId) {
-    const seedResult = await generateSeedCandidates(input.seedMalId, excludeMalIds);
-    candidates = seedResult.candidates;
+    const seedResult = await generateSeedCandidates(input.seedMalId, ownListIds);
+    rawCandidates = seedResult.candidates;
     strategies = seedResult.strategies;
   } else {
-    const result = await generateCandidates(profile, excludeMalIds);
-    candidates = result.candidates;
+    const result = await generateCandidates(profile, ownListIds);
+    rawCandidates = result.candidates;
     strategies = result.strategies;
+  }
+
+  // Collapse seasons/sequels into one entry per series, then drop any series
+  // the caller asked to exclude. The client only ever sees these collapsed
+  // representatives, so excluding one removes the whole series on re-roll.
+  const excludeSet = new Set(input.exclude ?? []);
+  const watchedTitles = input.entries.map((e) => e.details.title);
+  const candidates = new Map<number, CandidateData>();
+  for (const c of collapseSeasons(rawCandidates, watchedTitles).values()) {
+    if (!excludeSet.has(c.details.malId)) {
+      candidates.set(c.details.malId, c);
+    }
   }
 
   if (candidates.size === 0) {

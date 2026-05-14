@@ -6,8 +6,10 @@
  * and "more like this" seed mode.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { FaThumbsUp, FaThumbsDown } from "react-icons/fa";
 import { Avatar } from "~/components/ui/avatar";
 import { Skeleton } from "~/components/ui/skeleton";
 import { Button } from "~/components/ui/button";
@@ -73,37 +75,128 @@ export function RecommendationsGrid({
   seedMalId,
   loadingTeasers = [],
 }: RecommendationsGridProps) {
-  const router = useRouter();
-  const [data, setData] = useState<ApiResponse | null>(null);
+  const [meta, setMeta] = useState<RecMeta | null>(null);
+  const [recs, setRecs] = useState<Recommendation[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [rerolling, setRerolling] = useState(false);
+  const [noMore, setNoMore] = useState(false);
+  const [liked, setLiked] = useState<Set<number>>(new Set());
+  const [disliked, setDisliked] = useState<Set<number>>(new Set());
+  // Every malId shown this session, so "show different picks" never repeats one.
+  const seenRef = useRef<Set<number>>(new Set());
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
+  const fetchRecs = useCallback(
+    async (exclude: number[]): Promise<ApiResponse> => {
       const params = new URLSearchParams({ limit: String(limit) });
       if (typeof seedMalId === "number") params.set("seed", String(seedMalId));
+      if (exclude.length) params.set("exclude", exclude.join(","));
       const res = await fetch(`/api/recommendations?${params.toString()}`);
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(body.error ?? `Recommendations failed (${res.status})`);
       }
-      const body = (await res.json()) as ApiResponse;
-      setData(body);
+      return (await res.json()) as ApiResponse;
+    },
+    [limit, seedMalId],
+  );
+
+  // Initial load — also the "start over" action: a clean slate.
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    setNoMore(false);
+    try {
+      const body = await fetchRecs([]);
+      setMeta(body.meta);
+      setRecs(body.recommendations);
+      seenRef.current = new Set(body.recommendations.map((r) => r.malId));
+      setLiked(new Set());
+      setDisliked(new Set());
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't load recommendations");
     } finally {
       setLoading(false);
     }
-  }, [limit, seedMalId]);
+  }, [fetchRecs]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  if (loading && !data) return <EngineLoadingState teasers={loadingTeasers} seedMode={typeof seedMalId === "number"} />;
-  if (error) {
+  // "Show me different picks" — keep the liked ones, exclude everything seen
+  // so far, and pull a fresh batch for the rest.
+  const reroll = useCallback(async () => {
+    setRerolling(true);
+    setError(null);
+    setNoMore(false);
+    try {
+      // Pair the fetch with a short floor so the loading animation actually
+      // gets a moment on screen instead of flashing past on a warm cache.
+      const [body] = await Promise.all([
+        fetchRecs([...seenRef.current]),
+        new Promise((resolve) => setTimeout(resolve, 900)),
+      ]);
+      const fresh = body.recommendations;
+      if (fresh.length === 0) {
+        setNoMore(true);
+        return;
+      }
+      const kept = recs.filter((r) => liked.has(r.malId));
+      for (const r of fresh) seenRef.current.add(r.malId);
+      setRecs([...kept, ...fresh]);
+      setMeta(body.meta);
+      setLiked(new Set(kept.map((r) => r.malId)));
+      setDisliked(new Set());
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "Couldn't refresh recommendations",
+      );
+    } finally {
+      setRerolling(false);
+    }
+  }, [fetchRecs, recs, liked]);
+
+  const toggleLike = useCallback((malId: number) => {
+    setLiked((prev) => {
+      const next = new Set(prev);
+      if (next.has(malId)) next.delete(malId);
+      else next.add(malId);
+      return next;
+    });
+    setDisliked((prev) => {
+      if (!prev.has(malId)) return prev;
+      const next = new Set(prev);
+      next.delete(malId);
+      return next;
+    });
+  }, []);
+
+  const toggleDislike = useCallback((malId: number) => {
+    setDisliked((prev) => {
+      const next = new Set(prev);
+      if (next.has(malId)) next.delete(malId);
+      else next.add(malId);
+      return next;
+    });
+    setLiked((prev) => {
+      if (!prev.has(malId)) return prev;
+      const next = new Set(prev);
+      next.delete(malId);
+      return next;
+    });
+  }, []);
+
+  // Show the engine animation on the first load *and* every re-roll.
+  if ((loading && recs.length === 0) || rerolling) {
+    return (
+      <EngineLoadingState
+        teasers={loadingTeasers}
+        seedMode={typeof seedMalId === "number"}
+      />
+    );
+  }
+  if (error && recs.length === 0) {
     return (
       <div className="mx-auto max-w-md rounded-3xl bg-rose-500/5 p-8 text-center ring-1 ring-rose-500/20">
         <p className="text-sm text-rose-200">{error}</p>
@@ -115,12 +208,11 @@ export function RecommendationsGrid({
       </div>
     );
   }
-  if (!data) return null;
-
-  if (data.recommendations.length === 0) {
+  if (!meta) return null;
+  if (recs.length === 0) {
     return (
       <EmptyState
-        reason={data.meta.empty ?? "no-candidates"}
+        reason={meta.empty ?? "no-candidates"}
         onRetry={() => void load()}
       />
     );
@@ -128,16 +220,27 @@ export function RecommendationsGrid({
 
   return (
     <div className="space-y-6">
-      <MetaStrip meta={data.meta} onRefresh={() => void load()} />
+      <MetaStrip meta={meta} noMore={noMore} onReroll={() => void reroll()} />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {data.recommendations.map((r) => (
+        {recs.map((r) => (
           <RecommendationCard
             key={r.malId}
             rec={r}
-            onClick={() => router.push(`/anime/${r.malId}`)}
+            liked={liked.has(r.malId)}
+            disliked={disliked.has(r.malId)}
+            onLike={() => toggleLike(r.malId)}
+            onDislike={() => toggleDislike(r.malId)}
           />
         ))}
       </div>
+      <RerollBar
+        likedCount={liked.size}
+        dislikedCount={disliked.size}
+        rerolling={rerolling}
+        noMore={noMore}
+        error={error}
+        onReroll={() => void reroll()}
+      />
     </div>
   );
 }
@@ -146,105 +249,208 @@ export function RecommendationsGrid({
 
 function RecommendationCard({
   rec,
-  onClick,
+  liked,
+  disliked,
+  onLike,
+  onDislike,
 }: {
   rec: Recommendation;
-  onClick: () => void;
+  liked: boolean;
+  disliked: boolean;
+  onLike: () => void;
+  onDislike: () => void;
 }) {
   const badge = SOURCE_BADGE[rec.fromSource];
   const confidence = Math.max(0, Math.min(100, rec.confidence));
 
   return (
-    <button
-      onClick={onClick}
-      className="group flex h-full flex-col overflow-hidden rounded-3xl bg-white/[0.03] text-left ring-1 ring-white/[0.06] backdrop-blur-md transition-all duration-200 hover:-translate-y-0.5 hover:bg-white/[0.05] hover:ring-purple-400/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/60 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.5)]"
+    <div
+      className={
+        "group relative flex h-full flex-col overflow-hidden rounded-3xl bg-white/[0.03] ring-1 backdrop-blur-md transition-all duration-200 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.5)] " +
+        (disliked
+          ? "opacity-45 ring-white/[0.06]"
+          : liked
+            ? "ring-emerald-400/40"
+            : "ring-white/[0.06] hover:-translate-y-0.5 hover:bg-white/[0.05] hover:ring-purple-400/30")
+      }
     >
-      {/* poster */}
-      <div className="relative aspect-[3/4] w-full overflow-hidden bg-zinc-800">
-        {rec.image ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={rec.image}
-            alt=""
-            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center text-zinc-500">
-            <Avatar name={rec.title} size="xl" />
-          </div>
-        )}
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/90 via-black/40 to-transparent"
-        />
-        <div className="absolute left-3 top-3">
-          <span
-            className={`inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider ring-1 ring-inset ${badge.cls}`}
-          >
-            {badge.label}
-          </span>
-        </div>
-        {rec.candidateScore != null && rec.candidateScore > 0 ? (
-          <div className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-black/65 px-2.5 py-1 text-[11px] font-medium text-amber-300 backdrop-blur-sm ring-1 ring-amber-400/30">
-            <svg viewBox="0 0 24 24" className="h-3 w-3 fill-current" aria-hidden="true">
-              <path d="M12 2l3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z" />
-            </svg>
-            {rec.candidateScore.toFixed(1)}
-          </div>
-        ) : null}
-      </div>
-
-      {/* body */}
-      <div className="flex flex-1 flex-col gap-3 p-4">
-        <div>
-          <h3 className="line-clamp-2 text-sm font-semibold leading-tight text-white">
-            {rec.title}
-          </h3>
-          <p className="mt-1 text-[11px] text-zinc-500">
-            {rec.type}
-            {rec.episodes ? <> · {rec.episodes} ep</> : null}
-          </p>
-        </div>
-
-        <p className="line-clamp-2 text-xs leading-snug text-purple-200/90">
-          {rec.reason}
-        </p>
-
-        {rec.matchedTags.length > 0 ? (
-          <div className="flex flex-wrap gap-1">
-            {rec.matchedTags.slice(0, 3).map((t) => (
-              <span
-                key={t}
-                className="rounded-full bg-white/[0.05] px-2 py-0.5 text-[10px] text-zinc-300 ring-1 ring-inset ring-white/[0.06]"
-              >
-                {t}
-              </span>
-            ))}
-          </div>
-        ) : null}
-
-        {/* confidence bar */}
-        <div className="mt-auto">
-          <div className="flex items-center justify-between text-[10px] text-zinc-400">
-            <span className="font-medium uppercase tracking-wider">Match</span>
-            <span className="font-mono text-zinc-200">{confidence}%</span>
-          </div>
-          <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-white/[0.05]">
-            <div
-              className={
-                "h-full rounded-full transition-all duration-700 " +
-                (confidence >= 70
-                  ? "bg-gradient-to-r from-emerald-400 to-emerald-300"
-                  : confidence >= 50
-                  ? "bg-gradient-to-r from-sky-400 to-purple-400"
-                  : "bg-gradient-to-r from-zinc-400 to-zinc-300")
-              }
-              style={{ width: `${confidence}%` }}
+      <Link
+        href={`/anime/${rec.malId}`}
+        className="flex flex-1 flex-col focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-purple-400/60"
+      >
+        {/* poster */}
+        <div className="relative aspect-[3/4] w-full overflow-hidden bg-zinc-800">
+          {rec.image ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={rec.image}
+              alt=""
+              className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
             />
+          ) : (
+            <div className="flex h-full items-center justify-center text-zinc-500">
+              <Avatar name={rec.title} size="xl" />
+            </div>
+          )}
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/90 via-black/40 to-transparent"
+          />
+          <div className="absolute left-3 top-3">
+            <span
+              className={`inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider ring-1 ring-inset ${badge.cls}`}
+            >
+              {badge.label}
+            </span>
+          </div>
+          {rec.candidateScore != null && rec.candidateScore > 0 ? (
+            <div className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-black/65 px-2.5 py-1 text-[11px] font-medium text-amber-300 backdrop-blur-sm ring-1 ring-amber-400/30">
+              <svg viewBox="0 0 24 24" className="h-3 w-3 fill-current" aria-hidden="true">
+                <path d="M12 2l3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z" />
+              </svg>
+              {rec.candidateScore.toFixed(1)}
+            </div>
+          ) : null}
+        </div>
+
+        {/* body */}
+        <div className="flex flex-1 flex-col gap-3 p-4">
+          <div>
+            <h3 className="line-clamp-2 text-sm font-semibold leading-tight text-white">
+              {rec.title}
+            </h3>
+            <p className="mt-1 text-[11px] text-zinc-500">
+              {rec.type}
+              {rec.episodes ? <> · {rec.episodes} ep</> : null}
+            </p>
+          </div>
+
+          <p className="line-clamp-2 text-xs leading-snug text-purple-200/90">
+            {rec.reason}
+          </p>
+
+          {rec.matchedTags.length > 0 ? (
+            <div className="flex flex-wrap gap-1">
+              {rec.matchedTags.slice(0, 3).map((t) => (
+                <span
+                  key={t}
+                  className="rounded-full bg-white/[0.05] px-2 py-0.5 text-[10px] text-zinc-300 ring-1 ring-inset ring-white/[0.06]"
+                >
+                  {t}
+                </span>
+              ))}
+            </div>
+          ) : null}
+
+          {/* confidence bar */}
+          <div className="mt-auto">
+            <div className="flex items-center justify-between text-[10px] text-zinc-400">
+              <span className="font-medium uppercase tracking-wider">Match</span>
+              <span className="font-mono text-zinc-200">{confidence}%</span>
+            </div>
+            <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-white/[0.05]">
+              <div
+                className={
+                  "h-full rounded-full transition-all duration-700 " +
+                  (confidence >= 70
+                    ? "bg-gradient-to-r from-emerald-400 to-emerald-300"
+                    : confidence >= 50
+                    ? "bg-gradient-to-r from-sky-400 to-purple-400"
+                    : "bg-gradient-to-r from-zinc-400 to-zinc-300")
+                }
+                style={{ width: `${confidence}%` }}
+              />
+            </div>
           </div>
         </div>
+      </Link>
+
+      {/* like / dislike — your feedback shapes the next "different picks" pull */}
+      <div className="flex items-center gap-2 border-t border-white/[0.06] px-4 py-2.5">
+        <FeedbackButton kind="like" active={liked} onClick={onLike} />
+        <FeedbackButton kind="dislike" active={disliked} onClick={onDislike} />
       </div>
+    </div>
+  );
+}
+
+function FeedbackButton({
+  kind,
+  active,
+  onClick,
+}: {
+  kind: "like" | "dislike";
+  active: boolean;
+  onClick: () => void;
+}) {
+  const isLike = kind === "like";
+  const Icon = isLike ? FaThumbsUp : FaThumbsDown;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      aria-label={isLike ? "Like this pick" : "Not for me"}
+      className={
+        "flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-medium ring-1 ring-inset transition-colors " +
+        (active
+          ? isLike
+            ? "bg-emerald-500/15 text-emerald-300 ring-emerald-400/30"
+            : "bg-rose-500/15 text-rose-300 ring-rose-400/30"
+          : "bg-white/[0.03] text-zinc-400 ring-white/[0.06] hover:bg-white/[0.06] hover:text-zinc-200")
+      }
+    >
+      <Icon className="h-3 w-3" aria-hidden="true" />
+      {isLike ? "Like" : "Not for me"}
     </button>
+  );
+}
+
+/* ------------------------------ reroll bar ------------------------------- */
+
+function RerollBar({
+  likedCount,
+  dislikedCount,
+  rerolling,
+  noMore,
+  error,
+  onReroll,
+}: {
+  likedCount: number;
+  dislikedCount: number;
+  rerolling: boolean;
+  noMore: boolean;
+  error: string | null;
+  onReroll: () => void;
+}) {
+  const hasFeedback = likedCount > 0 || dislikedCount > 0;
+  return (
+    <div className="flex flex-col items-center gap-4 rounded-3xl bg-white/[0.025] px-6 py-6 text-center ring-1 ring-inset ring-white/[0.05] sm:flex-row sm:justify-between sm:text-left">
+      <div>
+        <p className="text-sm font-medium text-white">
+          {noMore ? "That's every pick we could find" : "Not quite right?"}
+        </p>
+        <p className="mt-0.5 text-xs text-zinc-400">
+          {error
+            ? error
+            : noMore
+              ? "You've been through the whole candidate pool — your likes are still saved above. Reload the page whenever you want a clean slate."
+              : hasFeedback
+                ? `${likedCount} liked · ${dislikedCount} not for you — we'll keep your likes and swap the rest.`
+                : "Pull a different set — anything you like stays, the rest gets replaced."}
+        </p>
+      </div>
+      {!noMore && (
+        <button
+          type="button"
+          onClick={onReroll}
+          disabled={rerolling}
+          className="inline-flex shrink-0 items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-zinc-900 transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {rerolling ? "Finding picks…" : "Show me different picks"}
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -252,10 +458,12 @@ function RecommendationCard({
 
 function MetaStrip({
   meta,
-  onRefresh,
+  noMore,
+  onReroll,
 }: {
   meta: RecMeta;
-  onRefresh: () => void;
+  noMore: boolean;
+  onReroll: () => void;
 }) {
   const fastLabel = useMemo(() => {
     if (meta.elapsedMs < 200) return "instant";
@@ -270,7 +478,8 @@ function MetaStrip({
           Profile <span className="font-mono text-zinc-200">{meta.profileSize}</span>
         </span>
         <span>
-          Candidates <span className="font-mono text-zinc-200">{meta.candidatesEvaluated}</span>
+          Candidates{" "}
+          <span className="font-mono text-zinc-200">{meta.candidatesEvaluated}</span>
         </span>
         <span>
           Generated in <span className="font-mono text-zinc-200">{fastLabel}</span>
@@ -289,13 +498,15 @@ function MetaStrip({
           </span>
         )}
       </div>
-      <button
-        type="button"
-        onClick={onRefresh}
-        className="rounded-full bg-white/[0.05] px-3.5 py-1.5 text-xs font-medium text-zinc-200 ring-1 ring-inset ring-white/[0.06] transition-colors hover:bg-white/[0.08] hover:text-white"
-      >
-        Refresh
-      </button>
+      {!noMore && (
+        <button
+          type="button"
+          onClick={onReroll}
+          className="shrink-0 rounded-full bg-white/[0.06] px-3.5 py-1.5 text-xs font-medium text-zinc-200 ring-1 ring-inset ring-white/[0.08] transition-colors hover:bg-white/[0.1] hover:text-white"
+        >
+          Different picks
+        </button>
+      )}
     </div>
   );
 }

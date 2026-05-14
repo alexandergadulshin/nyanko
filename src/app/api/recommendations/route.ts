@@ -36,6 +36,11 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const limit = Math.min(Number(searchParams.get("limit")) || 12, 30);
   const rawSeed = searchParams.get("seed");
   const seedMalId = rawSeed ? Number(rawSeed) : undefined;
+  // Comma-separated MAL IDs the client wants left out (already shown / disliked).
+  const exclude = (searchParams.get("exclude") ?? "")
+    .split(",")
+    .map((s) => Number(s.trim()))
+    .filter((n) => Number.isFinite(n) && n > 0);
 
   /* ----------------------- 1. user list + favorites ---------------------- */
   const [listRows, favRows] = await Promise.all([
@@ -99,6 +104,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       typeof seedMalId === "number" && !Number.isNaN(seedMalId)
         ? seedMalId
         : undefined,
+    exclude,
   });
 
   return NextResponse.json(result);

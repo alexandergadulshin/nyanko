@@ -116,6 +116,9 @@ export interface RecommendInput {
   limit?: number;
   /** When set, ignore profile and recommend by similar-to-seed only. */
   seedMalId?: number;
+  /** Extra MAL IDs to exclude — already-seen or disliked picks. Lets the
+   *  client ask for a fresh batch without repeating anything. */
+  exclude?: number[];
 }
 
 export interface RecommendOutput {
