@@ -2,108 +2,104 @@
  * GET /api/recommendations
  *
  * Personalised anime recommendations for the signed-in user.
+ * Powered by the engine in `src/lib/recommendation/`.
  *
- * Algorithm: content-based scoring against the user's watched list.
- * See `src/lib/recommendation.ts` for the engine.
+ * Query parameters:
+ *   limit  number  default 12, max 30
+ *   seed   number  MAL ID; switches to "more like this" mode (ignores profile)
  *
  * Pipeline:
- *   1. Auth via Clerk.
- *   2. Read the user's anime_list from Postgres.
- *   3. Hydrate each entry with full anime details via the cached
- *      multi-source API (Jikan + AniList).
- *   4. Pull a pool of candidates from the top-anime list.
- *   5. Score candidates against the user's taste profile and return
- *      the top N (default 10).
+ *   1. Auth via Clerk
+ *   2. Load anime_list + favorites for this user from Postgres
+ *   3. Hydrate every entry with merged Jikan+AniList details (cached
+ *      via the aggregator)
+ *   4. Hand to the engine, which does profile → candidates → score →
+ *      MMR diversity → explain → confidence
  *
- * Response shape:
- *   { recommendations: RecommendationResult[], sources: string[] }
+ * Response:
+ *   { recommendations: Recommendation[], meta: RecommendationMeta }
  */
 
 import { type NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 
-import { animeList } from "~/server/db/schema";
+import { animeList, favorites } from "~/server/db/schema";
 import { requireAuth, requireDatabase, withErrorHandling } from "~/lib/api-utils";
-import { jikanAPI, type DetailedAnimeItem } from "~/utils/api";
-import { multiSourceAPI } from "~/lib/multi-source";
-import {
-  recommend,
-  type UserAnimeEntry,
-  type RecommendationResult,
-} from "~/lib/recommendation";
-
-const DEFAULT_LIMIT = 10;
-const CANDIDATE_POOL_SIZE = 25;
+import { aggregator } from "~/lib/aggregator";
+import { recommend, type UserAnimeEntry } from "~/lib/recommendation";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   const userId = await requireAuth();
   const database = requireDatabase();
 
   const { searchParams } = new URL(request.url);
-  const limit = Math.min(
-    Number(searchParams.get("limit")) || DEFAULT_LIMIT,
-    25,
-  );
+  const limit = Math.min(Number(searchParams.get("limit")) || 12, 30);
+  const rawSeed = searchParams.get("seed");
+  const seedMalId = rawSeed ? Number(rawSeed) : undefined;
 
-  /* ---------------- 1. User's history ---------------- */
+  /* ----------------------- 1. user list + favorites ---------------------- */
+  const [listRows, favRows] = await Promise.all([
+    database.select().from(animeList).where(eq(animeList.userId, userId)),
+    database
+      .select()
+      .from(favorites)
+      .where(and(eq(favorites.userId, userId), eq(favorites.type, "anime"))),
+  ]);
 
-  const listRows = await database
-    .select()
-    .from(animeList)
-    .where(eq(animeList.userId, userId));
+  const favoriteIds = new Set(favRows.map((f) => f.itemId));
 
-  // Hydrate each list entry with full anime details. Done in parallel —
-  // each call is cached so most resolve in microseconds on warm cache.
-  // We use `multiSourceAPI` so the user benefits from the combined
-  // Jikan + AniList metadata.
-  const hydratedEntries: UserAnimeEntry[] = [];
-  await Promise.all(
-    listRows.map(async (row) => {
-      try {
-        const details = await multiSourceAPI.getAnimeDetails(row.animeId);
-        if (!details) return;
-        hydratedEntries.push({
+  /* ---------------------- 2. hydrate every entry ------------------------- */
+  // All calls go through the aggregator's per-item cache. Warm cache hits
+  // resolve in microseconds; cold cache fans out to Jikan + AniList in
+  // parallel under the per-source token-bucket rate limiter.
+  const entries: UserAnimeEntry[] = (
+    await Promise.all(
+      listRows.map(async (row) => {
+        const details = await aggregator.anime.byId(row.animeId).catch(() => null);
+        if (!details) return null;
+        return {
           malId: row.animeId,
           score: row.score,
           status: row.status,
+          isFavorite: favoriteIds.has(row.animeId),
           details,
-        });
-      } catch {
-        // Skip entries that can't be hydrated.
-      }
-    }),
+        } as UserAnimeEntry;
+      }),
+    )
+  ).filter((e): e is UserAnimeEntry => e !== null);
+
+  // Favorites the user added but never logged in their list — extra
+  // positive signal we don't want to drop.
+  const unlistedFavoriteIds = [...favoriteIds].filter(
+    (id) => !entries.some((e) => e.malId === id),
   );
+  const unlisted = (
+    await Promise.all(
+      unlistedFavoriteIds.map(async (id) => {
+        const details = await aggregator.anime.byId(id).catch(() => null);
+        if (!details) return null;
+        return {
+          malId: id,
+          score: null,
+          status: "completed", // favoriting implies engagement
+          isFavorite: true,
+          details,
+        } as UserAnimeEntry;
+      }),
+    )
+  ).filter((e): e is UserAnimeEntry => e !== null);
 
-  /* ---------------- 2. Candidate pool ---------------- */
+  entries.push(...unlisted);
 
-  const topList = await jikanAPI.getTopAnime(CANDIDATE_POOL_SIZE).catch(() => []);
-  const seenIds = new Set(hydratedEntries.map((e) => e.malId));
-
-  const candidates: DetailedAnimeItem[] = [];
-  await Promise.all(
-    topList.map(async (a) => {
-      if (seenIds.has(a.malId)) return;
-      try {
-        const detail = await multiSourceAPI.getAnimeDetails(a.malId);
-        if (detail) candidates.push(detail);
-      } catch {
-        // Skip
-      }
-    }),
-  );
-
-  /* ---------------- 3. Score & rank ---------------- */
-
-  const recommendations: RecommendationResult[] = recommend(
-    hydratedEntries,
-    candidates,
-    { limit, excludeSeenMalIds: seenIds },
-  );
-
-  return NextResponse.json({
-    recommendations,
-    sources: multiSourceAPI.sources,
-    profileSize: hydratedEntries.length,
-    candidatesEvaluated: candidates.length,
+  /* ------------------------------ 3. engine ------------------------------ */
+  const result = await recommend({
+    entries,
+    limit,
+    seedMalId:
+      typeof seedMalId === "number" && !Number.isNaN(seedMalId)
+        ? seedMalId
+        : undefined,
   });
+
+  return NextResponse.json(result);
 });

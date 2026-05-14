@@ -1,70 +1,58 @@
 "use client";
 
-import React from "react";
-import { useRouter } from "next/navigation";
-import { FaMagic, FaBrain, FaRocket } from "react-icons/fa";
+import Link from "next/link";
 
+/**
+ * Home-page entry point to the recommendation engine. Renders a glassy
+ * hero card with a "see your picks" link. Deliberately doesn't pre-fetch
+ * recommendations — the engine is fast but it does authenticated DB
+ * queries, so we let the user click in.
+ */
 export function RecommendationCTA() {
-  const router = useRouter();
-
-  const handleGetRecommendations = () => {
-    router.push('/recommendations');
-  };
-
   return (
-    <div className="w-full max-w-4xl mx-auto px-4 py-8">
-      <div className="relative overflow-hidden bg-gradient-to-br from-purple-500/10 to-pink-500/10 backdrop-blur-sm border border-purple-300/30 rounded-xl p-8 sm:p-12">
-        
-        {/* Decorative background elements */}
-        <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/5 rounded-full blur-xl"></div>
-        <div className="absolute bottom-0 left-0 w-24 h-24 bg-pink-500/5 rounded-full blur-xl"></div>
-        
-        <div className="relative text-center">
-          {/* Icon */}
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-full mb-6">
-            <FaMagic className="w-10 h-10 text-purple-400" />
+    <div className="mx-auto max-w-5xl px-4 sm:px-6">
+      <div className="relative overflow-hidden rounded-[32px] bg-white/[0.03] p-8 ring-1 ring-white/[0.06] backdrop-blur-md shadow-[0_24px_60px_-15px_rgba(168,85,247,0.35)] sm:p-12">
+        {/* gradient blooms */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-gradient-to-br from-purple-500/30 via-pink-500/20 to-transparent blur-3xl"
+        />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -bottom-32 -left-32 h-80 w-80 rounded-full bg-gradient-to-tr from-indigo-500/20 to-transparent blur-3xl"
+        />
+
+        <div className="relative flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+          <div className="max-w-xl">
+            <p className="text-xs font-medium uppercase tracking-[0.18em] text-purple-300/80">
+              Personal picks
+            </p>
+            <h2 className="mt-1 text-2xl font-semibold tracking-tight text-white sm:text-3xl">
+              Recommendations tuned to your taste
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-zinc-400">
+              We score every candidate against your watch history across MyAnimeList
+              and AniList, then diversify the result so you don&apos;t see four
+              versions of the same show.
+            </p>
           </div>
-          
-          {/* Title */}
-          <h2 className="text-3xl sm:text-4xl font-bold text-white light:text-gray-900 mb-4">
-            Discover Your Next Anime
-          </h2>
-          
-          {/* Subtitle */}
-          <p className="text-lg sm:text-xl text-purple-200 light:text-gray-600 mb-8 max-w-2xl mx-auto leading-relaxed">
-            Get personalized recommendations powered by AI and tailored to your unique taste. 
-            Whether you're new to anime or a seasoned otaku, we'll find your perfect match.
-          </p>
-          
-          {/* Features */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-6 mb-8">
-            <div className="flex items-center space-x-3 text-purple-200 light:text-gray-600">
-              <FaBrain className="w-5 h-5 text-purple-400" />
-              <span className="font-medium">AI-Powered Analysis</span>
-            </div>
-            <div className="flex items-center space-x-3 text-purple-200 light:text-gray-600">
-              <FaRocket className="w-5 h-5 text-pink-400" />
-              <span className="font-medium">Personalized Results</span>
-            </div>
-            <div className="flex items-center space-x-3 text-purple-200 light:text-gray-600">
-              <FaMagic className="w-5 h-5 text-blue-400" />
-              <span className="font-medium">Hidden Gems</span>
-            </div>
-          </div>
-          
-          {/* CTA Button */}
-          <button
-            onClick={handleGetRecommendations}
-            className="group inline-flex items-center space-x-3 px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold rounded-lg transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl hover:shadow-purple-500/25"
+
+          <Link
+            href="/recommendations"
+            className="inline-flex items-center justify-center self-start rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-zinc-900 shadow-lg transition-colors hover:bg-zinc-100 sm:self-center"
           >
-            <FaMagic className="w-5 h-5 group-hover:rotate-12 transition-transform duration-300" />
-            <span className="text-lg">Get My Recommendations</span>
-          </button>
-          
-          {/* Helper text */}
-          <p className="mt-4 text-sm text-purple-200/80 light:text-gray-500">
-            ✨ Works best when you have anime in your watchlist • Free forever
-          </p>
+            See your picks
+            <svg viewBox="0 0 24 24" className="ml-1 h-4 w-4" aria-hidden="true">
+              <path
+                d="M5 12h14M13 5l7 7-7 7"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </Link>
         </div>
       </div>
     </div>
