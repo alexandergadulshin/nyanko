@@ -193,7 +193,7 @@ class EnhancedAPIService {
       const enhancedResults = await Promise.all(
         results.map(async (anime) => {
           try {
-            const { itemData, externalMapping } = IdMappingService.malToInternal(anime, "anime");
+            const { itemData, externalMapping } = IdMappingService.malToInternal({ ...anime, mal_id: anime.malId }, "anime");
             const internalItem = await IdMappingService.createOrGetItem(itemData, externalMapping);
             
             return {
@@ -226,7 +226,7 @@ class EnhancedAPIService {
       const enhancedResults = await Promise.all(
         results.map(async (character) => {
           try {
-            const { itemData, externalMapping } = IdMappingService.malToInternal(character, "character");
+            const { itemData, externalMapping } = IdMappingService.malToInternal({ ...character, mal_id: character.malId }, "character");
             const internalItem = await IdMappingService.createOrGetItem(itemData, externalMapping);
             
             return {
@@ -259,7 +259,7 @@ class EnhancedAPIService {
       const enhancedResults = await Promise.all(
         results.map(async (person) => {
           try {
-            const { itemData, externalMapping } = IdMappingService.malToInternal(person, "person");
+            const { itemData, externalMapping } = IdMappingService.malToInternal({ ...person, mal_id: person.malId }, "person");
             const internalItem = await IdMappingService.createOrGetItem(itemData, externalMapping);
             
             return {
@@ -292,7 +292,7 @@ class EnhancedAPIService {
       const enhancedResults = await Promise.all(
         results.map(async (manga) => {
           try {
-            const { itemData, externalMapping } = IdMappingService.malToInternal(manga, "manga");
+            const { itemData, externalMapping } = IdMappingService.malToInternal({ ...manga, mal_id: manga.malId }, "manga");
             const internalItem = await IdMappingService.createOrGetItem(itemData, externalMapping);
             
             return {

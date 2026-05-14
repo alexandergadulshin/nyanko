@@ -194,7 +194,7 @@ export function isValidApiStatus(status: string): status is ApiStatus {
 export function normalizeAnimeStatus(status: string): AnimeStatus {
   const normalized = status.toLowerCase();
   for (const [key, value] of STATUS_NORMALIZERS.anime) {
-    if (normalized.includes(key)) return value;
+    if (normalized.includes(key)) return value as AnimeStatus;
   }
   return "Finished" as AnimeStatus;
 }
@@ -202,7 +202,7 @@ export function normalizeAnimeStatus(status: string): AnimeStatus {
 export function normalizeMangaStatus(status: string): MangaStatus {
   const normalized = status.toLowerCase();
   for (const [key, value] of STATUS_NORMALIZERS.manga) {
-    if (normalized.includes(key)) return value;
+    if (normalized.includes(key)) return value as MangaStatus;
   }
   return "Finished" as MangaStatus;
 }

@@ -155,9 +155,11 @@ export class IdMappingService {
       })
       .returning();
 
+    // Drizzle's .returning() always yields the inserted row(s); these assertions
+    // narrow `T | undefined` to `T` so the function returns a non-optional type.
     return {
-      ...newItem[0],
-      mappings: [newMapping[0]],
+      ...newItem[0]!,
+      mappings: [newMapping[0]!],
     };
   }
 
@@ -191,10 +193,10 @@ export class IdMappingService {
           lastSyncAt: new Date(),
           updatedAt: new Date(),
         })
-        .where(eq(externalIdMappings.id, existing[0].id))
+        .where(eq(externalIdMappings.id, existing[0]!.id))
         .returning();
 
-      return updated[0];
+      return updated[0]!;
     }
 
     const mappingId = uuidv4();
@@ -210,7 +212,7 @@ export class IdMappingService {
       })
       .returning();
 
-    return newMapping[0];
+    return newMapping[0]!;
   }
 
   static async updateItem(
@@ -234,7 +236,7 @@ export class IdMappingService {
       .where(eq(items.id, internalId))
       .returning();
 
-    return updated[0];
+    return updated[0]!;
   }
 
   static malToInternal(malData: {

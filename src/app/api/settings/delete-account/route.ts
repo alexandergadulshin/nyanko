@@ -49,7 +49,7 @@ export async function DELETE(request: NextRequest) {
     // Delete from Clerk authentication system
     console.log("Deleting user from Clerk...");
     try {
-      await clerkClient().users.deleteUser(userId);
+      await (await clerkClient()).users.deleteUser(userId);
       console.log("✅ Clerk deletion completed");
     } catch (clerkError) {
       console.error("❌ Error deleting Clerk user:", clerkError);
