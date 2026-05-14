@@ -24,7 +24,12 @@
  */
 
 import { type NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
+import { eq } from "drizzle-orm";
 import { aggregator, type SearchCategory } from "~/lib/aggregator";
+import { requireDatabase } from "~/lib/api-utils";
+import { animeList } from "~/server/db/schema";
+import { dedupeSeriesResults } from "~/lib/search-dedupe";
 
 const CATEGORIES: readonly SearchCategory[] = [
   "anime",
@@ -65,6 +70,24 @@ export async function GET(request: NextRequest) {
   const minScore =
     Number.isFinite(minScoreRaw) && minScoreRaw > 0 ? minScoreRaw : undefined;
 
+  // Optional personalization: when the user is signed in we know which
+  // entries they've watched, so the per-series pick can skip ahead to the
+  // next unwatched season instead of always surfacing season 1.
+  let watchedMalIds: Set<number> = new Set();
+  try {
+    const { userId } = await auth();
+    if (userId) {
+      const rows = await requireDatabase()
+        .select({ animeId: animeList.animeId })
+        .from(animeList)
+        .where(eq(animeList.userId, userId));
+      watchedMalIds = new Set(rows.map((r) => r.animeId));
+    }
+  } catch {
+    // Not signed in, or the DB is unavailable — fall back to the
+    // non-personalized dedup (season 1 first).
+  }
+
   try {
     const result = await aggregator.searchPaged({
       category,
@@ -81,13 +104,25 @@ export async function GET(request: NextRequest) {
       limit,
     });
 
-    return NextResponse.json(result, {
-      headers: {
-        // Edge-cache identical searches for 5 min and serve stale for a
-        // minute while revalidating. Pairs with the Redis cache underneath.
-        "Cache-Control": "public, s-maxage=300, stale-while-revalidate=60",
+    // Collapse seasons / movies of the same series to one entry — season 1
+    // first, later seasons next, movies last; signed-in users skip ahead
+    // past seasons they've already watched. Characters / people have no
+    // such grouping, so they pass through untouched.
+    const items =
+      category === "anime" || category === "manga"
+        ? dedupeSeriesResults(result.items, watchedMalIds)
+        : result.items;
+
+    return NextResponse.json(
+      { ...result, items },
+      {
+        headers: {
+          // Per-user once personalized; the shared Redis cache underneath
+          // still keeps it fast. Short browser cache for repeat queries.
+          "Cache-Control": "private, max-age=30",
+        },
       },
-    });
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Search failed";
     const rateLimited = message.toLowerCase().includes("rate limit");
