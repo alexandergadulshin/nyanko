@@ -1,778 +1,562 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useUser, useClerk } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
-import { useTheme } from "~/hooks/use-theme";
-import { UploadButton } from "~/lib/uploadthing";
-import { 
-  FaUser, 
-  FaEye, 
-  FaShieldAlt, 
-  FaSave, 
-  FaTrash,
+import {
+  FaUser,
+  FaEye,
   FaPalette,
-  FaCheck,
-  FaTimes,
-  FaSpinner
+  FaShieldAlt,
+  FaTrash,
 } from "react-icons/fa";
 
-interface UserSettings {
-  displayName: string;
-  username: string;
-  bio: string;
-  profileImage: string;
-  email: string;
-  allowFriendRequests: boolean;
-  lastNameChange?: string;
-  lastUsernameChange?: string;
-  privacy: {
-    profileVisibility: 'public' | 'friends' | 'private';
-    showWatchList: boolean;
-    showFavorites: boolean;
-    showStats: boolean;
-  };
-  preferences: {
-    language: string;
-    theme: 'dark' | 'light' | 'auto';
-    autoMarkCompleted: boolean;
-    spoilerWarnings: boolean;
+import { useTheme } from "~/hooks/use-theme";
+import { writePreferences } from "~/hooks/use-preferences";
+import { Toast } from "~/components/ui/toast";
+import { Skeleton } from "~/components/ui/skeleton";
+
+import { Section } from "~/components/settings/section";
+import { SaveBar } from "~/components/settings/save-bar";
+import { IdentityStrip } from "~/components/settings/identity-strip";
+import {
+  ProfileSection,
+  type ProfileFormValues,
+} from "~/components/settings/profile-section";
+import {
+  PrivacySection,
+  type PrivacyFormValues,
+  type ProfileVisibility,
+} from "~/components/settings/privacy-section";
+import {
+  PreferencesSection,
+  type PreferencesFormValues,
+} from "~/components/settings/preferences-section";
+import { AccountSection } from "~/components/settings/account-section";
+import { DangerSection } from "~/components/settings/danger-section";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const WEEK_MS = 7 * DAY_MS;
+
+interface SettingsApiResponse {
+  user: {
+    name?: string;
+    username?: string;
+    bio?: string;
+    email?: string;
+    image?: string;
+    allowFriendRequests?: boolean;
+    lastNameChange?: string;
+    lastUsernameChange?: string;
+    profileVisibility?: string;
+    showWatchList?: boolean;
+    showFavorites?: boolean;
+    showStats?: boolean;
+    createdAt?: string;
   };
 }
 
-const TABS = [
-  { id: 'profile' as const, label: 'Profile', icon: <FaUser /> },
-  { id: 'privacy' as const, label: 'Privacy', icon: <FaEye /> },
-  { id: 'preferences' as const, label: 'Preferences', icon: <FaPalette /> },
-  { id: 'account' as const, label: 'Account', icon: <FaShieldAlt /> },
-];
+interface PersistedForm {
+  profile: ProfileFormValues;
+  privacy: PrivacyFormValues;
+}
 
-const PRIVACY_LABELS = {
-  showWatchList: 'Allow others to see your anime watch list',
-  showFavorites: 'Allow others to see your favorite anime',
-  showStats: 'Allow others to see your viewing statistics',
+interface State extends PersistedForm {
+  preferences: PreferencesFormValues;
+  email: string;
+  memberSince: Date | null;
+  lastNameChange: Date | null;
+  lastUsernameChange: Date | null;
+}
+
+const EMPTY_PROFILE: ProfileFormValues = {
+  displayName: "",
+  username: "",
+  bio: "",
+  profileImage: "",
 };
 
-const TIME_CONSTANTS = {
-  DAY_MS: 24 * 60 * 60 * 1000,
-  WEEK_MS: 7 * 24 * 60 * 60 * 1000,
-  MESSAGE_TIMEOUT: 3000,
-  ERROR_TIMEOUT: 5000,
+const EMPTY_PRIVACY: PrivacyFormValues = {
+  profileVisibility: "public",
+  showWatchList: true,
+  showFavorites: true,
+  showStats: true,
+  allowFriendRequests: true,
 };
+
+const EMPTY_PREFS: PreferencesFormValues = {
+  language: "en",
+  autoMarkCompleted: false,
+  spoilerWarnings: true,
+};
+
+const initialState: State = {
+  profile: EMPTY_PROFILE,
+  privacy: EMPTY_PRIVACY,
+  preferences: EMPTY_PREFS,
+  email: "",
+  memberSince: null,
+  lastNameChange: null,
+  lastUsernameChange: null,
+};
+
+const PREFS_KEY = "nyanko.preferences";
 
 export default function SettingsPage() {
   const { user, isLoaded } = useUser();
   const { signOut } = useClerk();
   const router = useRouter();
   const { theme, toggleTheme } = useTheme();
-  const [activeTab, setActiveTab] = useState<'profile' | 'privacy' | 'preferences' | 'account'>('profile');
-  const [loading, setLoading] = useState(false);
-  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+
+  const [state, setState] = useState<State>(initialState);
+  const [original, setOriginal] = useState<PersistedForm>({
+    profile: EMPTY_PROFILE,
+    privacy: EMPTY_PRIVACY,
+  });
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [toast, setToast] = useState<{
+    msg: string;
+    kind: "success" | "error";
+  } | null>(null);
+
   const [usernameChecking, setUsernameChecking] = useState(false);
   const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [deleteConfirmText, setDeleteConfirmText] = useState('');
-  const [originalSettings, setOriginalSettings] = useState<{name: string, username: string}>({name: '', username: ''});
-  const [settings, setSettings] = useState<UserSettings>({
-    displayName: '',
-    username: '',
-    bio: '',
-    profileImage: '',
-    email: '',
-    allowFriendRequests: true,
-    privacy: {
-      profileVisibility: 'public',
-      showWatchList: true,
-      showFavorites: true,
-      showStats: true,
-    },
-    preferences: {
-      language: 'en',
-      theme: theme,
-      autoMarkCompleted: false,
-      spoilerWarnings: true,
-    },
-  });
+  const checkTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const checkId = useRef(0);
 
-  const canChangeName = useCallback(() => {
-    if (!settings.lastNameChange) return true;
-    const lastChange = new Date(settings.lastNameChange);
-    const oneDayAgo = new Date(Date.now() - TIME_CONSTANTS.DAY_MS);
-    return lastChange <= oneDayAgo;
-  }, [settings.lastNameChange]);
-
-  const canChangeUsername = useCallback(() => {
-    if (!settings.lastUsernameChange) return true;
-    const lastChange = new Date(settings.lastUsernameChange);
-    const sevenDaysAgo = new Date(Date.now() - TIME_CONSTANTS.WEEK_MS);
-    return lastChange <= sevenDaysAgo;
-  }, [settings.lastUsernameChange]);
-
-  const getNextNameChangeDate = useCallback(() => {
-    if (!settings.lastNameChange) return null;
-    const lastChange = new Date(settings.lastNameChange);
-    return new Date(lastChange.getTime() + TIME_CONSTANTS.DAY_MS);
-  }, [settings.lastNameChange]);
-
-  const getNextUsernameChangeDate = useCallback(() => {
-    if (!settings.lastUsernameChange) return null;
-    const lastChange = new Date(settings.lastUsernameChange);
-    return new Date(lastChange.getTime() + TIME_CONSTANTS.WEEK_MS);
-  }, [settings.lastUsernameChange]);
-
-  const showMessage = useCallback((message: string, isError = false) => {
-    setSaveMessage(message);
-    setTimeout(() => setSaveMessage(null), isError ? TIME_CONSTANTS.ERROR_TIMEOUT : TIME_CONSTANTS.MESSAGE_TIMEOUT);
-  }, []);
-
+  /* ----------------------------------------------------------- redirect out */
   useEffect(() => {
-    if (!isLoaded) return;
-    
-    if (!user) {
-      router.push('/auth');
-      return;
-    }
+    if (isLoaded && !user) router.push("/auth");
+  }, [isLoaded, user, router]);
 
-    const loadSettings = async () => {
+  /* ----------------------------------------------------------- initial load */
+  useEffect(() => {
+    if (!isLoaded || !user) return;
+    let alive = true;
+    void (async () => {
+      let storedPrefs: Partial<PreferencesFormValues> | null = null;
       try {
-        const response = await fetch('/api/settings');
-        if (response.ok) {
-          const data = await response.json() as {
-            user: {
-              name?: string;
-              username?: string;
-              bio?: string;
-              email?: string;
-              image?: string;
-              allowFriendRequests?: boolean;
-              lastNameChange?: string;
-              lastUsernameChange?: string;
-              profileVisibility?: string;
-              showWatchList?: boolean;
-              showFavorites?: boolean;
-              showStats?: boolean;
-            }
-          };
-          setSettings(prev => ({
-            ...prev,
-            displayName: data.user.name ?? '',
-            username: data.user.username ?? '',
-            bio: data.user.bio ?? '',
-            email: data.user.email ?? user.emailAddresses[0]?.emailAddress ?? '',
-            profileImage: data.user.image ?? user.imageUrl ?? '',
-            allowFriendRequests: data.user.allowFriendRequests ?? true,
-            lastNameChange: data.user.lastNameChange,
-            lastUsernameChange: data.user.lastUsernameChange,
-            privacy: {
-              ...prev.privacy,
-              profileVisibility: (data.user.profileVisibility as 'public' | 'friends' | 'private') ?? 'public',
-              showWatchList: data.user.showWatchList ?? true,
-              showFavorites: data.user.showFavorites ?? true,
-              showStats: data.user.showStats ?? true,
-            },
-          }));
-          
-          setOriginalSettings({
-            name: data.user.name ?? '',
-            username: data.user.username ?? '',
+        const raw = localStorage.getItem(PREFS_KEY);
+        if (raw) storedPrefs = JSON.parse(raw) as Partial<PreferencesFormValues>;
+      } catch {
+        storedPrefs = null;
+      }
+
+      try {
+        const res = await fetch("/api/settings");
+        if (!res.ok) throw new Error("Failed to load settings");
+        const data = (await res.json()) as SettingsApiResponse;
+        if (!alive) return;
+        const u = data.user;
+        const profile: ProfileFormValues = {
+          displayName: u.name ?? user.fullName ?? "",
+          username: u.username ?? "",
+          bio: u.bio ?? "",
+          profileImage: u.image ?? user.imageUrl ?? "",
+        };
+        const privacy: PrivacyFormValues = {
+          profileVisibility:
+            (u.profileVisibility as ProfileVisibility | undefined) ?? "public",
+          showWatchList: u.showWatchList ?? true,
+          showFavorites: u.showFavorites ?? true,
+          showStats: u.showStats ?? true,
+          allowFriendRequests: u.allowFriendRequests ?? true,
+        };
+        setState({
+          profile,
+          privacy,
+          preferences: { ...EMPTY_PREFS, ...(storedPrefs ?? {}) },
+          email: u.email ?? user.emailAddresses[0]?.emailAddress ?? "",
+          memberSince: u.createdAt ? new Date(u.createdAt) : null,
+          lastNameChange: u.lastNameChange ? new Date(u.lastNameChange) : null,
+          lastUsernameChange: u.lastUsernameChange
+            ? new Date(u.lastUsernameChange)
+            : null,
+        });
+        setOriginal({ profile, privacy });
+      } catch (err) {
+        if (alive) {
+          setToast({
+            msg: err instanceof Error ? err.message : "Failed to load settings",
+            kind: "error",
           });
         }
-      } catch (err) {
-        console.error('Failed to load settings:', err);
-        setSettings(prev => ({
-          ...prev,
-          displayName: user.fullName || '',
-          email: user.emailAddresses[0]?.emailAddress || '',
-          profileImage: user.imageUrl || '',
-        }));
+      } finally {
+        if (alive) setLoaded(true);
       }
+    })();
+    return () => {
+      alive = false;
     };
+  }, [isLoaded, user]);
 
-    loadSettings();
-  }, [user, isLoaded, router]);
+  /* --------------------------------------------------------- derived state */
+  const canChangeName = useMemo(() => {
+    if (!state.lastNameChange) return true;
+    return Date.now() - state.lastNameChange.getTime() >= DAY_MS;
+  }, [state.lastNameChange]);
 
-  const saveSettings = useCallback(async (updatedSettings: Partial<UserSettings>) => {
-    const response = await fetch('/api/settings', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        displayName: updatedSettings.displayName ?? settings.displayName,
-        username: updatedSettings.username ?? settings.username,
-        bio: updatedSettings.bio ?? settings.bio,
-        image: updatedSettings.profileImage ?? settings.profileImage,
-        profileVisibility: updatedSettings.privacy?.profileVisibility ?? settings.privacy.profileVisibility,
-        showWatchList: updatedSettings.privacy?.showWatchList ?? settings.privacy.showWatchList,
-        showFavorites: updatedSettings.privacy?.showFavorites ?? settings.privacy.showFavorites,
-        showStats: updatedSettings.privacy?.showStats ?? settings.privacy.showStats,
-        allowFriendRequests: updatedSettings.allowFriendRequests ?? settings.allowFriendRequests,
-      }),
-    });
+  const canChangeUsername = useMemo(() => {
+    if (!state.lastUsernameChange) return true;
+    return Date.now() - state.lastUsernameChange.getTime() >= WEEK_MS;
+  }, [state.lastUsernameChange]);
 
-    if (!response.ok) {
-      const data = await response.json();
-      throw new Error(data.error || 'Failed to save settings');
-    }
+  const nextNameChange = useMemo(
+    () =>
+      state.lastNameChange ? new Date(state.lastNameChange.getTime() + DAY_MS) : null,
+    [state.lastNameChange],
+  );
+  const nextUsernameChange = useMemo(
+    () =>
+      state.lastUsernameChange
+        ? new Date(state.lastUsernameChange.getTime() + WEEK_MS)
+        : null,
+    [state.lastUsernameChange],
+  );
 
-    return response.json();
-  }, [settings]);
+  const dirty = useMemo(() => {
+    return (
+      JSON.stringify(state.profile) !== JSON.stringify(original.profile) ||
+      JSON.stringify(state.privacy) !== JSON.stringify(original.privacy)
+    );
+  }, [state.profile, state.privacy, original]);
 
-  const handleSave = useCallback(async () => {
-    setLoading(true);
-    setSaveMessage(null);
+  /* --------------------------------------------------------- field setters */
+  const setProfile = useCallback(
+    <K extends keyof ProfileFormValues>(k: K, v: ProfileFormValues[K]) => {
+      setState((s) => ({ ...s, profile: { ...s.profile, [k]: v } }));
+    },
+    [],
+  );
+  const setPrivacy = useCallback(
+    <K extends keyof PrivacyFormValues>(k: K, v: PrivacyFormValues[K]) => {
+      setState((s) => ({ ...s, privacy: { ...s.privacy, [k]: v } }));
+    },
+    [],
+  );
+  const setPreferences = useCallback(
+    <K extends keyof PreferencesFormValues>(k: K, v: PreferencesFormValues[K]) => {
+      setState((s) => {
+        const next = { ...s.preferences, [k]: v };
+        writePreferences(next);
+        return { ...s, preferences: next };
+      });
+    },
+    [],
+  );
+  const onThemeChange = useCallback(
+    (next: "light" | "dark") => {
+      if (next !== theme) toggleTheme();
+    },
+    [theme, toggleTheme],
+  );
 
+  /* ----------------------------------------------- username availability */
+  const onUsernameInput = useCallback(
+    (value: string) => {
+      setProfile("username", value);
+      setUsernameAvailable(null);
+      if (checkTimer.current) clearTimeout(checkTimer.current);
+      // Invalidate any in-flight or pending check; only the latest
+      // request's result is allowed to write back to UI state.
+      const myId = ++checkId.current;
+      const trimmed = value.trim();
+      if (!trimmed || trimmed === original.profile.username) {
+        setUsernameChecking(false);
+        return;
+      }
+      setUsernameChecking(true);
+      checkTimer.current = setTimeout(() => {
+        void (async () => {
+          try {
+            const res = await fetch("/api/settings/username-check", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ username: trimmed }),
+            });
+            if (myId !== checkId.current) return;
+            const data = (await res.json()) as { available?: boolean };
+            if (myId !== checkId.current) return;
+            setUsernameAvailable(
+              typeof data.available === "boolean" ? data.available : null,
+            );
+          } catch {
+            if (myId !== checkId.current) return;
+            setUsernameAvailable(null);
+          } finally {
+            if (myId === checkId.current) setUsernameChecking(false);
+          }
+        })();
+      }, 400);
+    },
+    [original.profile.username, setProfile],
+  );
+
+  /* -------------------------------------------------------------- save */
+  const saveAll = useCallback(
+    async (override?: Partial<ProfileFormValues>) => {
+      const profile = { ...state.profile, ...(override ?? {}) };
+      const body = {
+        displayName: profile.displayName,
+        username: profile.username || undefined,
+        bio: profile.bio,
+        image: profile.profileImage,
+        profileVisibility: state.privacy.profileVisibility,
+        showWatchList: state.privacy.showWatchList,
+        showFavorites: state.privacy.showFavorites,
+        showStats: state.privacy.showStats,
+        allowFriendRequests: state.privacy.allowFriendRequests,
+      };
+      const res = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error ?? "Failed to save settings");
+      }
+      return profile;
+    },
+    [state.profile, state.privacy],
+  );
+
+  const onSave = useCallback(async () => {
+    if (saving) return;
+    setSaving(true);
     try {
-      await saveSettings(settings);
+      const savedProfile = await saveAll();
+      const now = new Date();
+      setState((s) => ({
+        ...s,
+        lastNameChange:
+          s.profile.displayName !== original.profile.displayName
+            ? now
+            : s.lastNameChange,
+        lastUsernameChange:
+          s.profile.username !== original.profile.username
+            ? now
+            : s.lastUsernameChange,
+      }));
+      setOriginal({ profile: savedProfile, privacy: state.privacy });
+      setToast({ msg: "Settings saved.", kind: "success" });
+    } catch (err) {
+      setToast({
+        msg: err instanceof Error ? err.message : "Couldn't save settings.",
+        kind: "error",
+      });
+    } finally {
+      setSaving(false);
+    }
+  }, [saveAll, saving, original.profile, state.privacy]);
 
-      const now = new Date().toISOString();
-      const nameChanged = settings.displayName !== originalSettings.name;
-      const usernameChanged = settings.username !== originalSettings.username;
+  const onDiscard = useCallback(() => {
+    setState((s) => ({ ...s, profile: original.profile, privacy: original.privacy }));
+    setUsernameAvailable(null);
+  }, [original]);
 
-      if (nameChanged || usernameChanged) {
-        setSettings(prev => ({
-          ...prev,
-          lastNameChange: nameChanged ? now : prev.lastNameChange,
-          lastUsernameChange: usernameChanged ? now : prev.lastUsernameChange,
-        }));
-        
-        setOriginalSettings({
-          name: settings.displayName,
-          username: settings.username,
+  /* ------------------------------------------------------ image upload */
+  const onImageUploadComplete = useCallback(
+    async (res: unknown) => {
+      const arr = res as Array<{ url?: string }> | undefined;
+      const url = arr?.[0]?.url;
+      if (!url) return;
+      setProfile("profileImage", url);
+      try {
+        const saved = await saveAll({ profileImage: url });
+        setOriginal((o) => ({ ...o, profile: saved }));
+        setToast({ msg: "Profile photo updated.", kind: "success" });
+      } catch (err) {
+        setToast({
+          msg:
+            err instanceof Error
+              ? err.message
+              : "Uploaded, but couldn't save. Click Save changes.",
+          kind: "error",
         });
       }
+    },
+    [saveAll, setProfile],
+  );
 
-      showMessage('Settings saved successfully!');
-    } catch (err) {
-      showMessage(err instanceof Error ? err.message : 'Failed to save settings. Please try again.', true);
-    } finally {
-      setLoading(false);
-    }
-  }, [settings, originalSettings, saveSettings, showMessage]);
-
-  const checkUsernameAvailability = useCallback(async (username: string) => {
-    if (!username.trim()) {
-      setUsernameAvailable(null);
-      return;
-    }
-
-    setUsernameChecking(true);
-    try {
-      const response = await fetch('/api/settings/username-check', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: username.trim() }),
-      });
-
-      const data = await response.json();
-      setUsernameAvailable(data.available);
-    } catch (err) {
-      console.error('Failed to check username:', err);
-      setUsernameAvailable(null);
-    } finally {
-      setUsernameChecking(false);
-    }
+  const onImageUploadError = useCallback((error: Error) => {
+    setToast({ msg: `Upload failed: ${error.message}`, kind: "error" });
   }, []);
 
-  const handleImageUploadComplete = useCallback(async (res: any) => {
-    if (res?.[0]?.url) {
-      const newImage = res[0].url;
-      setSettings(prev => ({ ...prev, profileImage: newImage }));
-      
-      try {
-        await saveSettings({ profileImage: newImage });
-        showMessage('Profile image uploaded and saved successfully!');
-      } catch (err) {
-        showMessage('Image uploaded but failed to save to profile. Please click Save Changes.', true);
-      }
-    }
-  }, [saveSettings, showMessage]);
-
-  const handleImageUploadError = useCallback((error: Error) => {
-    showMessage(`Upload failed: ${error.message}`, true);
-  }, [showMessage]);
-
-  const handleDeleteAccount = useCallback(async () => {
-    if (deleteConfirmText !== 'DELETE MY ACCOUNT') {
-      showMessage('Please type "DELETE MY ACCOUNT" to confirm', true);
-      return;
-    }
-
+  /* --------------------------------------------------------- delete acct */
+  const onDeleteAccount = useCallback(async () => {
+    setDeleting(true);
     try {
-      const response = await fetch('/api/settings/delete-account', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/settings/delete-account", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ confirmDelete: true }),
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to delete account');
-      }
-
-      const data = await response.json();
+      if (!res.ok) throw new Error("Failed to delete account");
+      const data = (await res.json()) as { shouldSignOut?: boolean };
       if (data.shouldSignOut) {
         await signOut();
-        router.push('/?message=Account deleted successfully');
+        router.push("/?message=Account%20deleted");
       } else {
-        router.push('/auth?message=Account deleted successfully');
+        router.push("/auth?message=Account%20deleted");
       }
     } catch (err) {
-      showMessage('Failed to delete account', true);
+      setToast({
+        msg: err instanceof Error ? err.message : "Couldn't delete account.",
+        kind: "error",
+      });
+      setDeleting(false);
     }
-  }, [deleteConfirmText, router, showMessage, signOut]);
+  }, [router, signOut]);
 
-  const handleInputChange = useCallback((section: keyof UserSettings, field: string, value: unknown) => {
-    setSettings(prev => ({
-      ...prev,
-      [section]: {
-        ...prev[section] as Record<string, unknown>,
-        [field]: value,
-      },
-    }));
-  }, []);
+  const onSignOut = useCallback(async () => {
+    await signOut();
+    router.push("/");
+  }, [signOut, router]);
 
-  const handleThemeChange = useCallback((newTheme: 'dark' | 'light') => {
-    handleInputChange('preferences', 'theme', newTheme);
-    if (newTheme !== theme) {
-      toggleTheme();
-    }
-  }, [theme, toggleTheme, handleInputChange]);
-
-  const handleUsernameChange = useCallback((value: string) => {
-    setSettings(prev => ({ ...prev, username: value }));
-    if (value !== settings.username) {
-      setTimeout(() => checkUsernameAvailability(value), 500);
-    }
-  }, [settings.username, checkUsernameAvailability]);
-
-  if (!isLoaded || !user) {
+  /* ------------------------------------------------------------ render */
+  if (!isLoaded || !user || !loaded) {
     return (
-      <div className="min-h-screen bg-[#181622] light:bg-transparent flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto mb-4"></div>
-          <p className="text-white text-lg">Loading...</p>
-        </div>
-      </div>
+      <Shell>
+        <LoadingState />
+      </Shell>
     );
   }
 
-  const inputClassName = (canChange: boolean) => 
-    `w-full px-4 py-3 border rounded-lg text-white placeholder-purple-200/60 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400 ${
-      canChange 
-        ? 'bg-[#6d28d9]/30 border-purple-300/40' 
-        : 'bg-gray-600/30 border-gray-500/40 cursor-not-allowed opacity-60'
-    }`;
-
-  const toggleClassName = "w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all duration-300 peer-checked:bg-purple-600 hover:bg-gray-500";
-
   return (
-    <div className="min-h-screen bg-[#181622] light:bg-transparent">
-      <div className="container mx-auto px-4 py-8">
-        <div className="mb-8 text-center">
-          <h1 className="text-4xl font-bold mb-2">
-            <span className="bg-gradient-to-r from-purple-400 via-pink-400 to-purple-600 bg-clip-text text-transparent">
-              Settings
-            </span>
-          </h1>
-          <div className="mt-4 w-[calc(100%-2rem)] max-w-6xl h-1 bg-gradient-to-r from-purple-500 to-pink-500 mx-auto rounded-full"></div>
-        </div>
+    <Shell>
+      <IdentityStrip
+        name={state.profile.displayName}
+        username={state.profile.username}
+        email={state.email}
+        memberSince={state.memberSince}
+        imageUrl={state.profile.profileImage}
+      />
 
-        <div className="flex flex-col lg:flex-row gap-8">
-          <div className="lg:w-64 flex-shrink-0">
-            <div className="bg-gradient-to-br from-[#6d28d9]/40 to-[#3d2954]/60 backdrop-blur-md border border-purple-300/20 rounded-xl p-4 sticky top-4">
-              <nav className="space-y-2">
-                {TABS.map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 text-left ${
-                      activeTab === tab.id
-                        ? 'bg-purple-600 text-white shadow-lg'
-                        : 'text-gray-300 hover:text-white hover:bg-purple-500/30'
-                    }`}
-                  >
-                    <span className="w-5 h-5">{tab.icon}</span>
-                    <span className="font-medium">{tab.label}</span>
-                  </button>
-                ))}
-              </nav>
+      <div className="mt-2">
+        <Section
+          id="profile"
+          icon={<FaUser />}
+          title="Profile"
+          description="Your photo, name, and bio — what other people see when they land on your profile."
+        >
+          <ProfileSection
+            values={state.profile}
+            onChange={setProfile}
+            canChangeName={canChangeName}
+            canChangeUsername={canChangeUsername}
+            nextNameChange={nextNameChange}
+            nextUsernameChange={nextUsernameChange}
+            usernameChecking={usernameChecking}
+            usernameAvailable={usernameAvailable}
+            onUsernameInput={onUsernameInput}
+            onImageUploadComplete={onImageUploadComplete}
+            onImageUploadError={onImageUploadError}
+          />
+        </Section>
+
+        <Section
+          id="privacy"
+          icon={<FaEye />}
+          title="Privacy"
+          description="Choose who can find your profile and which parts of it stay visible."
+        >
+          <PrivacySection values={state.privacy} onChange={setPrivacy} />
+        </Section>
+
+        <Section
+          id="preferences"
+          icon={<FaPalette />}
+          title="Preferences"
+          description="Tune how Nyanko looks and behaves while you're watching."
+        >
+          <PreferencesSection
+            values={state.preferences}
+            onChange={setPreferences}
+            theme={theme}
+            onThemeChange={onThemeChange}
+          />
+        </Section>
+
+        <Section
+          id="account"
+          icon={<FaShieldAlt />}
+          title="Account"
+          description="The details tied to your sign-in. Edit these through your auth provider."
+        >
+          <AccountSection
+            email={state.email}
+            username={state.profile.username}
+            memberSince={state.memberSince}
+            onSignOut={() => void onSignOut()}
+          />
+        </Section>
+
+        <Section
+          id="danger"
+          icon={<FaTrash />}
+          iconAccent="danger"
+          title="Danger zone"
+          description="Irreversible actions. Once you confirm, your data is gone."
+        >
+          <DangerSection onDeleteAccount={onDeleteAccount} deleting={deleting} />
+        </Section>
+      </div>
+
+      <SaveBar
+        visible={dirty}
+        saving={saving}
+        onSave={() => void onSave()}
+        onDiscard={onDiscard}
+      />
+
+      <Toast
+        message={toast?.msg ?? null}
+        kind={toast?.kind ?? "info"}
+        onDismiss={() => setToast(null)}
+      />
+    </Shell>
+  );
+}
+
+function Shell({ children }: { children: React.ReactNode }) {
+  return (
+    <main className="min-h-screen bg-[#0A0917]">
+      <div className="mx-auto max-w-5xl px-4 pb-32 pt-20 sm:px-6 sm:pt-24">
+        {children}
+      </div>
+    </main>
+  );
+}
+
+function LoadingState() {
+  return (
+    <div>
+      <Skeleton className="h-32 w-full rounded-[28px]" />
+      <div className="mt-12 space-y-16">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="flex flex-col gap-8 lg:flex-row lg:gap-12">
+            <div className="lg:w-72">
+              <Skeleton className="h-11 w-11" rounded="lg" />
+              <Skeleton className="mt-5 h-3 w-24" />
+              <Skeleton className="mt-3 h-7 w-32" />
+              <Skeleton className="mt-2 h-4 w-full" />
+            </div>
+            <div className="flex-1 space-y-4">
+              <Skeleton className="h-20 w-full" rounded="lg" />
+              <Skeleton className="h-14 w-full" rounded="lg" />
+              <Skeleton className="h-14 w-full" rounded="lg" />
             </div>
           </div>
-
-          <div className="flex-1">
-            <div className="bg-gradient-to-br from-[#6d28d9]/40 to-[#3d2954]/60 backdrop-blur-md border border-purple-300/20 rounded-xl p-6">
-              
-              {activeTab === 'profile' && (
-                <div className="space-y-6">
-                  <h2 className="text-2xl font-bold text-white mb-6">Profile Settings</h2>
-                  
-                  <div className="flex items-center space-x-6">
-                    <div className="relative">
-                      {settings.profileImage ? (
-                        <img
-                          src={settings.profileImage}
-                          alt="Profile"
-                          className="w-36 h-36 rounded-full object-cover border-2 border-purple-500/30 shadow-lg"
-                          onError={(e) => {
-                            e.currentTarget.style.display = 'none';
-                            const nextSibling = e.currentTarget.nextElementSibling as HTMLElement | null;
-                            if (nextSibling) {
-                              nextSibling.style.display = 'block';
-                            }
-                          }}
-                        />
-                      ) : (
-                        <div className="w-36 h-36 rounded-full border-2 border-purple-500/30 bg-gray-700 shadow-lg"></div>
-                      )}
-                      {settings.profileImage && (
-                        <div className="w-36 h-36 rounded-full border-2 border-purple-500/30 bg-gray-700 shadow-lg hidden"></div>
-                      )}
-                    </div>
-                    <div>
-                      <h3 className="text-white font-semibold mb-2">Profile Picture</h3>
-                      <p className="text-gray-400 text-sm mb-3">Upload a new profile picture (max 4MB)</p>
-                      <UploadButton
-                        endpoint="profileImage"
-                        onClientUploadComplete={handleImageUploadComplete}
-                        onUploadError={handleImageUploadError}
-                        appearance={{
-                          button: "bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm transition-colors ut-ready:bg-purple-600 ut-uploading:cursor-not-allowed ut-uploading:bg-purple-700",
-                          allowedContent: "text-gray-400 text-xs",
-                          container: "w-max flex-col items-center"
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <label className="block text-sm font-medium text-purple-200 mb-2">
-                        Display Name
-                      </label>
-                      <input
-                        type="text"
-                        value={settings.displayName}
-                        onChange={(e) => setSettings(prev => ({ ...prev, displayName: e.target.value }))}
-                        disabled={!canChangeName()}
-                        className={inputClassName(canChangeName())}
-                      />
-                      {!canChangeName() && (
-                        <p className="text-orange-400 text-xs mt-1">
-                          You can change your display name again on {getNextNameChangeDate()?.toLocaleDateString()}
-                        </p>
-                      )}
-                      {canChangeName() && (
-                        <p className="text-gray-400 text-xs mt-1">
-                          You can change your display name once per day
-                        </p>
-                      )}
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-purple-200 mb-2">
-                        Username
-                      </label>
-                      <div className="relative">
-                        <input
-                          type="text"
-                          value={settings.username}
-                          onChange={(e) => handleUsernameChange(e.target.value)}
-                          disabled={!canChangeUsername()}
-                          className={`${inputClassName(canChangeUsername())} pr-10`}
-                          placeholder="Choose a unique username"
-                        />
-                        <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
-                          {canChangeUsername() && usernameChecking ? (
-                            <FaSpinner className="w-4 h-4 text-gray-400 animate-spin" />
-                          ) : canChangeUsername() && usernameAvailable === true ? (
-                            <FaCheck className="w-4 h-4 text-green-400" />
-                          ) : canChangeUsername() && usernameAvailable === false ? (
-                            <FaTimes className="w-4 h-4 text-red-400" />
-                          ) : null}
-                        </div>
-                      </div>
-                      {!canChangeUsername() && (
-                        <p className="text-orange-400 text-xs mt-1">
-                          You can change your username again on {getNextUsernameChangeDate()?.toLocaleDateString()}
-                        </p>
-                      )}
-                      {canChangeUsername() && usernameAvailable === false && (
-                        <p className="text-red-400 text-xs mt-1">Username is already taken</p>
-                      )}
-                      {canChangeUsername() && usernameAvailable === true && (
-                        <p className="text-green-400 text-xs mt-1">Username is available</p>
-                      )}
-                      {canChangeUsername() && !usernameAvailable && (
-                        <p className="text-gray-400 text-xs mt-1">
-                          You can change your username once every 7 days
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-purple-200 mb-2">
-                      Bio
-                    </label>
-                    <textarea
-                      value={settings.bio}
-                      onChange={(e) => setSettings(prev => ({ ...prev, bio: e.target.value }))}
-                      rows={4}
-                      className="w-full px-4 py-3 bg-[#6d28d9]/30 border border-purple-300/40 rounded-lg text-white placeholder-purple-200/60 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400 resize-none"
-                      placeholder="Tell us about yourself..."
-                    />
-                  </div>
-                </div>
-              )}
-
-              {activeTab === 'privacy' && (
-                <div className="space-y-6">
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-2xl font-bold text-white mb-6">Privacy Settings</h2>
-                    {saveMessage && (
-                      <div className={`text-sm px-3 py-1 rounded-full ${saveMessage.includes('success') ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
-                        {saveMessage}
-                      </div>
-                    )}
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-purple-200 mb-2">
-                      Profile Visibility
-                    </label>
-                    <select
-                      value={settings.privacy.profileVisibility}
-                      onChange={(e) => handleInputChange('privacy', 'profileVisibility', e.target.value)}
-                      className="w-full px-4 py-3 bg-[#6d28d9]/30 border border-purple-300/40 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400"
-                      style={{ 
-                        backgroundImage: `url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%23a855f7' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E")`,
-                        backgroundPosition: 'right 12px center',
-                        backgroundRepeat: 'no-repeat',
-                        backgroundSize: '16px',
-                        appearance: 'none'
-                      }}
-                    >
-                      <option value="public" className="bg-gray-800 text-white">Public - Anyone can see your profile</option>
-                      <option value="friends" className="bg-gray-800 text-white">Friends Only - Only friends can see your profile</option>
-                      <option value="private" className="bg-gray-800 text-white">Private - Only you can see your profile</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-4">
-                    {Object.entries(settings.privacy).filter(([key]) => key !== 'profileVisibility').map(([key, value]) => (
-                      <div key={key} className="flex items-center justify-between p-4 bg-[#6d28d9]/20 rounded-lg">
-                        <div>
-                          <h3 className="text-white font-medium capitalize">
-                            {key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
-                          </h3>
-                          <p className="text-gray-400 text-sm">
-                            {PRIVACY_LABELS[key as keyof typeof PRIVACY_LABELS]}
-                          </p>
-                        </div>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={value as boolean}
-                            onChange={(e) => handleInputChange('privacy', key, e.target.checked)}
-                            className="sr-only peer"
-                          />
-                          <div className={toggleClassName}></div>
-                        </label>
-                      </div>
-                    ))}
-                    
-                    <div className="flex items-center justify-between p-4 bg-[#6d28d9]/20 rounded-lg">
-                      <div>
-                        <h3 className="text-white font-medium">Allow Friend Requests</h3>
-                        <p className="text-gray-400 text-sm">Allow other users to send you friend requests</p>
-                      </div>
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={settings.allowFriendRequests}
-                          onChange={(e) => setSettings(prev => ({ ...prev, allowFriendRequests: e.target.checked }))}
-                          className="sr-only peer"
-                        />
-                        <div className={toggleClassName}></div>
-                      </label>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {activeTab === 'preferences' && (
-                <div className="space-y-6">
-                  <h2 className="text-2xl font-bold text-white mb-6">Preferences</h2>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <label className="block text-sm font-medium text-purple-200 mb-2">
-                        Language
-                      </label>
-                      <select
-                        value={settings.preferences.language}
-                        onChange={(e) => handleInputChange('preferences', 'language', e.target.value)}
-                        className="w-full px-4 py-3 bg-[#6d28d9]/30 border border-purple-300/40 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-400"
-                      >
-                        <option value="en">English</option>
-                        <option value="ja">Japanese</option>
-                        <option value="es">Spanish</option>
-                        <option value="fr">French</option>
-                        <option value="de">German</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-purple-200 mb-2">
-                        Theme
-                      </label>
-                      <select
-                        value={theme}
-                        onChange={(e) => handleThemeChange(e.target.value as 'dark' | 'light')}
-                        className="w-full px-4 py-3 bg-[#6d28d9]/30 border border-purple-300/40 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-400"
-                      >
-                        <option value="dark">Dark</option>
-                        <option value="light">Light</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between p-4 bg-[#6d28d9]/20 rounded-lg">
-                      <div>
-                        <h3 className="text-white font-medium">Auto-mark as Completed</h3>
-                        <p className="text-gray-400 text-sm">Automatically mark anime as completed when you finish watching</p>
-                      </div>
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={settings.preferences.autoMarkCompleted}
-                          onChange={(e) => handleInputChange('preferences', 'autoMarkCompleted', e.target.checked)}
-                          className="sr-only peer"
-                        />
-                        <div className={toggleClassName}></div>
-                      </label>
-                    </div>
-
-                    <div className="flex items-center justify-between p-4 bg-[#6d28d9]/20 rounded-lg">
-                      <div>
-                        <h3 className="text-white font-medium">Spoiler Warnings</h3>
-                        <p className="text-gray-400 text-sm">Show warnings before displaying potential spoilers</p>
-                      </div>
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={settings.preferences.spoilerWarnings}
-                          onChange={(e) => handleInputChange('preferences', 'spoilerWarnings', e.target.checked)}
-                          className="sr-only peer"
-                        />
-                        <div className={toggleClassName}></div>
-                      </label>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {activeTab === 'account' && (
-                <div className="space-y-6">
-                  <h2 className="text-2xl font-bold text-white mb-6">Account Settings</h2>
-                  
-                  <div className="space-y-6">
-                    <div>
-                      <label className="block text-sm font-medium text-purple-200 mb-2">
-                        Email Address
-                      </label>
-                      <input
-                        type="email"
-                        value={settings.email}
-                        onChange={(e) => setSettings(prev => ({ ...prev, email: e.target.value }))}
-                        className="w-full px-4 py-3 bg-[#6d28d9]/30 border border-purple-300/40 rounded-lg text-white placeholder-purple-200/60 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400"
-                      />
-                    </div>
-
-                    <div className="border-t border-purple-300/20 pt-6">
-                      <h3 className="text-lg font-semibold text-red-400 mb-4">Danger Zone</h3>
-                      <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4">
-                        <h4 className="text-red-400 font-medium mb-2">Delete Account</h4>
-                        <p className="text-gray-400 text-sm mb-4">
-                          Permanently delete your account and all associated data. This action cannot be undone.
-                        </p>
-                        {!showDeleteConfirm ? (
-                          <button 
-                            onClick={() => setShowDeleteConfirm(true)}
-                            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors"
-                          >
-                            <FaTrash className="inline mr-2" />
-                            Delete Account
-                          </button>
-                        ) : (
-                          <div className="space-y-4">
-                            <div>
-                              <p className="text-red-400 text-sm mb-2 font-medium">
-                                Type "DELETE MY ACCOUNT" to confirm:
-                              </p>
-                              <input
-                                type="text"
-                                value={deleteConfirmText}
-                                onChange={(e) => setDeleteConfirmText(e.target.value)}
-                                className="w-full px-3 py-2 bg-gray-900/40 border border-red-500/40 rounded text-white placeholder-red-200/60 focus:outline-none focus:ring-1 focus:ring-red-500"
-                                placeholder="DELETE MY ACCOUNT"
-                              />
-                            </div>
-                            <div className="flex space-x-3">
-                              <button 
-                                onClick={handleDeleteAccount}
-                                disabled={deleteConfirmText !== 'DELETE MY ACCOUNT'}
-                                className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg transition-colors"
-                              >
-                                <FaTrash className="inline mr-2" />
-                                Confirm Delete
-                              </button>
-                              <button 
-                                onClick={() => {
-                                  setShowDeleteConfirm(false);
-                                  setDeleteConfirmText('');
-                                }}
-                                className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors"
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <div className="flex items-center justify-between mt-8 pt-6 border-t border-purple-300/20">
-                <div>
-                  {saveMessage && (
-                    <p className={`text-sm ${saveMessage.includes('success') ? 'text-green-400' : 'text-red-400'}`}>
-                      {saveMessage}
-                    </p>
-                  )}
-                </div>
-                <button
-                  onClick={handleSave}
-                  disabled={loading}
-                  className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center space-x-2"
-                >
-                  {loading ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                      <span>Saving...</span>
-                    </>
-                  ) : (
-                    <>
-                      <FaSave />
-                      <span>Save Changes</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        ))}
       </div>
     </div>
   );
