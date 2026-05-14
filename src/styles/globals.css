@@ -9,6 +9,10 @@
 html {
   @apply bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900;
   min-height: 100vh;
+  /* Clip stray horizontal overflow (e.g. carousel loop slides that bleed
+     past the viewport) without adding a scrollbar or breaking sticky
+     positioning. `clip` — unlike `hidden` — leaves vertical scroll alone. */
+  overflow-x: clip;
 }
 
 /* Light mode styles - using !important to override */
@@ -28,6 +32,7 @@ html.light * {
 body {
   @apply text-white min-h-screen;
   background: transparent;
+  overflow-x: clip;
 }
 
 html.light body {
