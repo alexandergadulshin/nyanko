@@ -5,6 +5,7 @@ import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { FaArrowLeft, FaPlus, FaSearch, FaFilter, FaEdit, FaTrash, FaMinus } from "react-icons/fa";
 import { jikanAPI } from "~/utils/api";
+import { usePreferences } from "~/hooks/use-preferences";
 
 interface AnimeListItem {
   id: string;
@@ -166,6 +167,7 @@ AnimeListItemComponent.displayName = 'AnimeListItemComponent';
 export default function AnimeListPage() {
   const { user, isLoaded } = useUser();
   const router = useRouter();
+  const { autoMarkCompleted } = usePreferences();
   const [animeList, setAnimeList] = useState<AnimeListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -335,7 +337,7 @@ export default function AnimeListPage() {
     let newStatus = anime.status;
     
     if (increment) {
-      if (anime.totalEpisodes && newEpisodeCount >= anime.totalEpisodes) {
+      if (autoMarkCompleted && anime.totalEpisodes && newEpisodeCount >= anime.totalEpisodes) {
         newStatus = "completed";
       } else if (anime.status === "planning" && newEpisodeCount === 1) {
         newStatus = "watching";
@@ -394,7 +396,7 @@ export default function AnimeListPage() {
         return newSet;
       });
     }
-  }, []);
+  }, [autoMarkCompleted]);
 
   const incrementEpisode = useCallback((anime: AnimeListItem) => updateEpisodeCount(anime, true), [updateEpisodeCount]);
   const decrementEpisode = useCallback((anime: AnimeListItem) => updateEpisodeCount(anime, false), [updateEpisodeCount]);
