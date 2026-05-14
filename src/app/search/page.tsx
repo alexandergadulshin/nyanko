@@ -1,261 +1,96 @@
-"use client";
+import type { Metadata } from "next";
+import { aggregator, type SearchCategory } from "~/lib/aggregator";
+import { SearchView } from "~/components/search/search-view";
+import type { SearchParams } from "~/hooks/use-search";
 
-import React, { useState, useEffect, Suspense, useCallback } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
-import { FaStar, FaHeart } from "react-icons/fa";
-import { jikanAPI, type SearchCategory, type SearchItem } from "~/utils/api";
+export const metadata: Metadata = {
+  title: "Search · Nyanko",
+  description: "Search anime, manga, characters, and people.",
+};
 
-const CATEGORY_CONFIG = {
-  anime: { label: 'Anime', icon: '🎬' },
-  characters: { label: 'Characters', icon: '👤' },
-  people: { label: 'People', icon: '👨‍💼' },
-  manga: { label: 'Manga', icon: '📚' }
-} as const;
+export const dynamic = "force-dynamic";
 
-const SEARCH_CATEGORIES: SearchCategory[] = ['anime', 'characters', 'people', 'manga'];
+const CATEGORIES: readonly SearchCategory[] = [
+  "anime",
+  "manga",
+  "characters",
+  "people",
+];
+const PER_PAGE = 24;
 
-const STATUS_COLORS = {
-  anime: {
-    'Airing Now': 'bg-green-500',
-    'Scheduled': 'bg-blue-500',
-    'Movie': 'bg-purple-500'
-  },
-  manga: {
-    'Publishing': 'bg-green-500',
-    'Finished': 'bg-blue-500'
-  },
-  default: 'bg-gray-500'
-} as const;
-
-const SEARCH_LIMIT = 24;
-
-function SearchPageContent() {
-  const searchParams = useSearchParams();
-  const router = useRouter();
-  const [results, setResults] = useState<SearchItem[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [category, setCategory] = useState<SearchCategory>("anime");
-
-  const query = searchParams.get("q") ?? "";
-  const categoryParam = searchParams.get("category") as SearchCategory;
-
-  useEffect(() => {
-    if (categoryParam && SEARCH_CATEGORIES.includes(categoryParam)) {
-      setCategory(categoryParam);
-    }
-  }, [categoryParam]);
-
-  const performSearch = useCallback(async () => {
-    if (!query.trim()) return;
-
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const searchResults = await jikanAPI.searchMultiCategory(query, category, SEARCH_LIMIT);
-      setResults(searchResults);
-    } catch (err) {
-      console.error("Search error:", err);
-      const errorMessage = err instanceof Error && err.message.includes('rate limited')
-        ? "Too many requests. Please wait a moment before searching again."
-        : `Failed to search ${category}. Please try again.`;
-      setError(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  }, [query, category]);
-
-  useEffect(() => {
-    void performSearch();
-  }, [performSearch]);
-
-  const handleItemClick = useCallback((item: SearchItem) => {
-    const pathMap = {
-      anime: `/anime/${item.malId}`,
-      manga: `/manga/${item.malId}`,
-      characters: `/character/${item.malId}`,
-      people: `/person/${item.malId}`
-    };
-    router.push(pathMap[category]);
-  }, [category, router]);
-
-  const getCategoryLabel = useCallback((cat: SearchCategory) => 
-    CATEGORY_CONFIG[cat]?.label || 'Anime', []);
-
-  const getItemTitle = useCallback((item: SearchItem) => 
-    'title' in item ? item.title : item.name, []);
-
-  const getCategoryIcon = useCallback((cat: SearchCategory) => 
-    CATEGORY_CONFIG[cat]?.icon || '🎬', []);
-  
-  const handleCategoryChange = useCallback((newCategory: SearchCategory) => {
-    setCategory(newCategory);
-    const newSearchParams = new URLSearchParams(searchParams);
-    newSearchParams.set('category', newCategory);
-    if (query) {
-      router.push(`/search?${newSearchParams.toString()}`);
-    }
-  }, [searchParams, query, router]);
-
-  return (
-    <div className="min-h-screen bg-[#181622] light:bg-transparent">
-      <div className="container mx-auto px-4 py-8">
-        <div className="mb-8">
-          <div className="flex justify-center mb-4">
-            <div className="bg-gray-800/60 backdrop-blur-sm rounded-xl p-2 border border-gray-700/30">
-              <div className="flex space-x-1">
-                {SEARCH_CATEGORIES.map((cat) => (
-                  <button
-                    key={cat}
-                    onClick={() => handleCategoryChange(cat)}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center space-x-2 ${
-                      category === cat
-                        ? 'bg-purple-600 text-white shadow-lg'
-                        : 'text-gray-300 hover:text-white hover:bg-gray-700/50'
-                    }`}
-                  >
-                    <span className="text-base">{getCategoryIcon(cat)}</span>
-                    <span>{getCategoryLabel(cat)}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-          
-          <div className="text-center">
-            <button
-              onClick={() => router.push(`/advanced-search${query ? `?q=${encodeURIComponent(query)}&category=${category}` : `?category=${category}`}`)}
-              className="text-blue-400 hover:text-blue-300 text-sm transition-colors inline-flex items-center space-x-1"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4" />
-              </svg>
-              <span>Advanced Search with Filters</span>
-            </button>
-          </div>
-        </div>
-
-        {query && (
-          <>
-            <div className="mb-6">
-              <h1 className="text-2xl font-bold text-white flex items-center space-x-2">
-                <span className="text-2xl">{getCategoryIcon(category)}</span>
-                <span>{getCategoryLabel(category)} Results for &ldquo;{query}&rdquo;</span>
-              </h1>
-              {!loading && results.length > 0 && (
-                <p className="text-gray-400 mt-1">
-                  Found {results.length} {category === 'anime' ? 'anime' : category === 'manga' ? 'manga' : category} results
-                </p>
-              )}
-            </div>
-
-            {loading ? (
-              <div className="flex justify-center items-center py-12">
-                <div className="text-center">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500 mx-auto mb-2"></div>
-                  <p className="text-gray-400">Searching...</p>
-                </div>
-              </div>
-            ) : error ? (
-              <div className="text-center py-12">
-                <p className="text-red-400 text-lg">{error}</p>
-              </div>
-            ) : results.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-6">
-                {results.map((item) => (
-                  <div
-                    key={item.malId}
-                    onClick={() => handleItemClick(item)}
-                    className="bg-gray-800/30 rounded-lg overflow-hidden hover:bg-gray-800/50 transition-colors cursor-pointer group"
-                  >
-                    <div className="aspect-[3/4] relative overflow-hidden">
-                      <img
-                        src={item.image}
-                        alt={getItemTitle(item)}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                        onError={(e) => {
-                          e.currentTarget.src = '/placeholder-anime.jpg';
-                        }}
-                      />
-                      {'status' in item && (
-                        <div className="absolute top-2 right-2">
-                          <span className={`px-2 py-1 text-xs font-semibold text-white rounded-md shadow-lg ${
-                            (STATUS_COLORS[category as keyof typeof STATUS_COLORS] as any)?.[item.status as string] || STATUS_COLORS.default
-                          }`}>
-                            {item.status}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                    
-                    <div className="p-4">
-                      <h3 className="text-white font-medium text-sm mb-2 line-clamp-2 group-hover:text-purple-300 transition-colors">
-                        {getItemTitle(item)}
-                      </h3>
-                      
-                      <div className="flex items-center justify-between text-xs">
-                        {('rating' in item && item.rating > 0) && (
-                          <div className="flex items-center space-x-1">
-                            <FaStar className="text-yellow-400" />
-                            <span className="text-gray-300">{item.rating.toFixed(1)}</span>
-                          </div>
-                        )}
-                        
-                        {item.favorites > 0 && (
-                          <div className="flex items-center space-x-1">
-                            <FaHeart className="text-red-400" />
-                            <span className="text-gray-300">
-                              {item.favorites > 1000 
-                                ? `${(item.favorites / 1000).toFixed(0)}K` 
-                                : item.favorites}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                      
-                      <div className="mt-2 text-xs text-gray-400">
-                        {category === 'anime' && 'episodes' in item && item.episodes && `${item.episodes} episodes`}
-                        {category === 'manga' && 'chapters' in item && item.chapters && `${item.chapters} chapters`}
-                        {category === 'characters' && 'Character'}
-                        {category === 'people' && 'Person'}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-12">
-                <p className="text-gray-400 text-lg">No {getCategoryLabel(category).toLowerCase()} found for &quot;{query}&quot;</p>
-                <p className="text-gray-500 text-sm mt-2">Try searching with different keywords or switch to a different category</p>
-              </div>
-            )}
-          </>
-        )}
-
-        {!query && (
-          <div className="text-center py-12">
-            <div className="text-6xl mb-4">{getCategoryIcon(category)}</div>
-            <h2 className="text-xl text-white mb-2">Search for {getCategoryLabel(category)}</h2>
-            <p className="text-gray-400">Enter a search term above to find {getCategoryLabel(category).toLowerCase()}</p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+function first(v: string | string[] | undefined): string | undefined {
+  return Array.isArray(v) ? v[0] : v;
 }
 
-export default function SearchPage() {
+function parseIds(raw: string | undefined): number[] {
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map(Number)
+    .filter((n) => Number.isFinite(n) && n > 0);
+}
+
+export default async function SearchPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = await searchParams;
+
+  const categoryRaw = first(sp.category);
+  const category: SearchCategory = CATEGORIES.includes(
+    categoryRaw as SearchCategory,
+  )
+    ? (categoryRaw as SearchCategory)
+    : "anime";
+
+  const sortRaw = first(sp.sort);
+  const sort: SearchParams["sort"] =
+    sortRaw === "asc" || sortRaw === "desc" ? sortRaw : "";
+
+  const initialParams: SearchParams = {
+    q: first(sp.q) ?? "",
+    category,
+    type: first(sp.type) ?? "",
+    status: first(sp.status) ?? "",
+    rating: first(sp.rating) ?? "",
+    genres: parseIds(first(sp.genres)),
+    excludeGenres: parseIds(first(sp.excludeGenres)),
+    minScore: Number(first(sp.minScore)) || 0,
+    orderBy: first(sp.orderBy) ?? "",
+    sort,
+    page: Math.max(1, Number(first(sp.page)) || 1),
+    limit: PER_PAGE,
+  };
+
+  // Prefetch the first page + genre taxonomy server-side. This hits the same
+  // Redis cache the /api/search route uses, so the page paints with real
+  // results and the client hook skips its initial fetch.
+  const [initialData, genres] = await Promise.all([
+    aggregator
+      .searchPaged({
+        category: initialParams.category,
+        query: initialParams.q,
+        type: initialParams.type,
+        status: initialParams.status,
+        rating: initialParams.rating,
+        genres: initialParams.genres,
+        excludeGenres: initialParams.excludeGenres,
+        minScore: initialParams.minScore,
+        orderBy: initialParams.orderBy,
+        sort: sort || undefined,
+        page: initialParams.page,
+        limit: PER_PAGE,
+      })
+      .catch(() => null),
+    aggregator.taxonomy.genres().catch(() => []),
+  ]);
+
   return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-[#181622] light:bg-transparent flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500 mx-auto mb-2"></div>
-          <p className="text-gray-400">Loading search...</p>
-        </div>
-      </div>
-    }>
-      <SearchPageContent />
-    </Suspense>
+    <SearchView
+      initialParams={initialParams}
+      initialData={initialData}
+      genres={genres}
+    />
   );
 }
