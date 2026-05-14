@@ -120,7 +120,7 @@ export const UnifiedCarousel = React.memo(({
   return (
     <div className={`carousel-container relative w-full ${className}`}>
       {title && (
-        <div className="mb-3 px-4">
+        <div className="mb-2 px-4">
           {/* Mobile: Search bar above title */}
           {showSearchBar && (
             <div className="block sm:hidden mb-4">

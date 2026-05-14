@@ -43,7 +43,7 @@ export default async function HomePage() {
       <Suspense fallback={null}>
         <MessageHandler />
       </Suspense>
-      <section className="pt-28 pb-8 overflow-visible">
+      <section className="mx-auto max-w-[1536px] overflow-x-clip pt-6 pb-8">
         <CarouselWrapper
           airingData={airingData}
           topAnimeData={topAnimeData}
@@ -51,7 +51,7 @@ export default async function HomePage() {
         />
       </section>
 
-      <section className="pb-16">
+      <section className="mx-auto max-w-[1536px] pt-4 pb-16">
         <RecommendationCTA />
       </section>
     </main>

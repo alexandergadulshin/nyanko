@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Navigation, Autoplay } from "swiper/modules";
+import { Navigation, Autoplay, Keyboard } from "swiper/modules";
 import { jikanAPI, type AnimeItem, type MangaItem } from "~/utils/api";
 
 export type CarouselDataType = 'anime' | 'manga';
@@ -127,12 +127,15 @@ export function createSwiperConfig(options: SwiperConfigOptions) {
   } = options;
 
   return useMemo(() => ({
-    modules: [Navigation, ...(autoplay ? [Autoplay] : [])],
+    modules: [Navigation, Keyboard, ...(autoplay ? [Autoplay] : [])],
     spaceBetween,
     slidesPerView,
     centeredSlides,
     breakpoints,
     navigation,
+    // Left/Right arrow keys advance whichever carousel is in view. Swiper's
+    // keyboard module already ignores keypresses while an input is focused.
+    keyboard: { enabled: true, onlyInViewport: true },
     ...(autoplay && { autoplay: { delay: autoplayDelay, disableOnInteraction: false } }),
     loop,
     watchSlidesProgress: true,

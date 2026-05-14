@@ -37,7 +37,9 @@ export const CarouselWrapper = React.memo(function CarouselWrapper({
       <div className="mt-6">
         <TopAnimeCarousel initialData={topAnimeData} />
       </div>
-      <TopMangaCarousel initialData={topMangaData} />
+      <div className="mt-6">
+        <TopMangaCarousel initialData={topMangaData} />
+      </div>
     </>
   );
 });
