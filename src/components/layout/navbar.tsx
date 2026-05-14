@@ -66,37 +66,37 @@ export function Navbar() {
 
   return (
     <nav
-      className="z-50 transition-all duration-300 fixed top-4 left-4 right-4 bg-[#6d28d9]/80 backdrop-blur-md border border-purple-300/30 rounded-xl"
+      className="z-50 transition-all duration-300 fixed top-2 sm:top-4 left-2 sm:left-4 right-2 sm:right-4 bg-[#6d28d9]/80 backdrop-blur-md border border-purple-300/30 rounded-xl"
     >
-      <div className="flex justify-between items-center h-16 px-6 sm:px-8 md:px-10">
+      <div className="flex justify-between items-center h-14 sm:h-16 px-4 sm:px-6 md:px-8 lg:px-10">
         <div className="flex-shrink-0">
-          <Link href="/" className="text-xl font-bold text-white/90 light:text-gray-300 hover:text-white transition-colors">
+          <Link href="/" className="text-lg sm:text-xl font-bold text-white/90 light:text-gray-300 hover:text-white transition-colors">
             {APP_CONFIG.name}
           </Link>
         </div>
 
-        <div className="flex items-center space-x-2 sm:space-x-3">
+        <div className="flex items-center space-x-1 sm:space-x-2">
             <Link
               href="/advanced-search"
-              className="inline-flex items-center justify-center w-10 h-10 rounded-lg text-white/80 hover:text-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-200 light:text-gray-400 light:hover:text-gray-200"
+              className="inline-flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-lg text-white/80 hover:text-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-200 light:text-gray-400 light:hover:text-gray-200"
               title="Advanced Search"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             </Link>
             
             <button
               onClick={toggleTheme}
-              className="inline-flex items-center justify-center w-10 h-10 rounded-lg text-white/80 hover:text-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-200 light:text-gray-400 light:hover:text-gray-200"
+              className="inline-flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-lg text-white/80 hover:text-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-200 light:text-gray-400 light:hover:text-gray-200"
               title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
             >
               {theme === 'dark' ? (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
                 </svg>
               ) : (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
                 </svg>
               )}
@@ -105,25 +105,25 @@ export function Navbar() {
             <div className="relative">
               <button
                 onClick={toggleMenu}
-                className="inline-flex items-center justify-center w-10 h-10 rounded-lg text-white/80 hover:text-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-200 light:text-gray-400 light:hover:text-gray-200"
+                className="inline-flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-lg text-white/80 hover:text-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-200 light:text-gray-400 light:hover:text-gray-200"
                 aria-expanded={isMenuOpen}
                 aria-label="Toggle main menu"
               >
-                <div className="w-5 h-5 flex flex-col justify-center items-center">
+                <div className="w-4 h-4 sm:w-5 sm:h-5 flex flex-col justify-center items-center">
                   <span
-                    className={`bg-current block transition-all duration-300 ease-out h-0.5 w-5 rounded-sm ${
+                    className={`bg-current block transition-all duration-300 ease-out h-0.5 w-4 sm:w-5 rounded-sm ${
                       isMenuOpen
                         ? "rotate-45 translate-y-1"
                         : "-translate-y-0.5"
                     }`}
                   ></span>
                   <span
-                    className={`bg-current block transition-all duration-300 ease-out h-0.5 w-5 rounded-sm my-0.5 ${
+                    className={`bg-current block transition-all duration-300 ease-out h-0.5 w-4 sm:w-5 rounded-sm my-0.5 ${
                       isMenuOpen ? "opacity-0" : "opacity-100"
                     }`}
                   ></span>
                   <span
-                    className={`bg-current block transition-all duration-300 ease-out h-0.5 w-5 rounded-sm ${
+                    className={`bg-current block transition-all duration-300 ease-out h-0.5 w-4 sm:w-5 rounded-sm ${
                       isMenuOpen
                         ? "-rotate-45 -translate-y-1"
                         : "translate-y-0.5"
@@ -133,7 +133,7 @@ export function Navbar() {
               </button>
 
               {isMenuOpen && (
-                <div className="absolute right-0 top-full mt-2 w-56 bg-white/95 backdrop-blur-md rounded-xl shadow-2xl py-2 z-50 border border-gray-200/50">
+                <div className="absolute right-0 top-full mt-2 w-64 sm:w-56 bg-white/95 backdrop-blur-md rounded-xl shadow-2xl py-2 z-50 border border-gray-200/50">
                   <div className="md:hidden">
                     {NAV_ITEMS.map((item) => (
                       <Link

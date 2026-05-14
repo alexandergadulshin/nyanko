@@ -419,12 +419,32 @@ class JikanAPIService {
   
   async getTopManga(limit = DEFAULT_LIMIT): Promise<MangaItem[]> {
     const apiLimit = Math.min(limit, MAX_LIMIT);
-    const response = await this.makeRequest(`/top/manga?limit=${apiLimit}`);
+    const response = await this.makeRequest(`/top/manga?limit=${apiLimit}`, TTL.TOP_LISTS);
     let transformed = response.data.map((manga: any) => this.transformMangaData(manga));
     transformed = this.removeDuplicates(transformed);
     return transformed.slice(0, limit);
   }
-  
+
+  async getTopCharacters(limit = DEFAULT_LIMIT): Promise<CharacterItem[]> {
+    const apiLimit = Math.min(limit, MAX_LIMIT);
+    const response = await this.makeRequest(`/top/characters?limit=${apiLimit}`, TTL.TOP_LISTS);
+    if (!response.data || !Array.isArray(response.data)) return [];
+    const transformed = response.data
+      .map((character: any) => this.transformCharacterData(character))
+      .sort((a, b) => (b.favorites ?? 0) - (a.favorites ?? 0));
+    return transformed.slice(0, limit);
+  }
+
+  async getTopPeople(limit = DEFAULT_LIMIT): Promise<PersonItem[]> {
+    const apiLimit = Math.min(limit, MAX_LIMIT);
+    const response = await this.makeRequest(`/top/people?limit=${apiLimit}`, TTL.TOP_LISTS);
+    if (!response.data || !Array.isArray(response.data)) return [];
+    const transformed = response.data
+      .map((person: any) => this.transformPersonData(person))
+      .sort((a, b) => (b.favorites ?? 0) - (a.favorites ?? 0));
+    return transformed.slice(0, limit);
+  }
+
   getAnimeByGenre(genreId: number, limit = DEFAULT_LIMIT) {
     return this.fetchAnime(`/anime?genres=${genreId}&order_by=score&sort=desc`, limit);
   }

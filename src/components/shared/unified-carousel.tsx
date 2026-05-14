@@ -120,25 +120,38 @@ export const UnifiedCarousel = React.memo(({
   return (
     <div className={`carousel-container relative w-full ${className}`}>
       {title && (
-        <div className="flex items-center justify-between mb-3 px-4">
-          <div className="text-left">
-            {title === "Popular: New Releases" ? (
-              <h2 className="text-3xl font-bold">
-                <span className="text-white light:text-black light:[-webkit-text-stroke:none]" style={{ WebkitTextStroke: '0.35px #000000' }}>Popular</span>
-                <span className="text-white light:text-black">:</span>
-                <span className="text-[#e879f9]"> New Releases</span>
-              </h2>
-            ) : (
-              <h2 className="text-3xl font-bold text-white light:text-black">{title}</h2>
-            )}
-          </div>
+        <div className="mb-3 px-4">
+          {/* Mobile: Search bar above title */}
           {showSearchBar && (
-            <div className="flex-shrink-0 ml-4">
-              <div className="w-80">
+            <div className="block sm:hidden mb-4">
+              <div className="w-full">
                 <AnimeSearchBar className="w-full" defaultCategory="anime" />
               </div>
             </div>
           )}
+          
+          {/* Desktop and tablet layout */}
+          <div className="flex items-center justify-between">
+            <div className="text-left">
+              {title === "Popular: New Releases" ? (
+                <h2 className="text-2xl sm:text-3xl font-bold">
+                  <span className="text-white light:text-black light:[-webkit-text-stroke:none]" style={{ WebkitTextStroke: '0.35px #000000' }}>Popular</span>
+                  <span className="text-white light:text-black">:</span>
+                  <span className="text-[#e879f9]"> New Releases</span>
+                </h2>
+              ) : (
+                <h2 className="text-2xl sm:text-3xl font-bold text-white light:text-black">{title}</h2>
+              )}
+            </div>
+            {/* Desktop: Search bar to the right of title */}
+            {showSearchBar && (
+              <div className="hidden sm:flex flex-shrink-0 ml-4">
+                <div className="w-80">
+                  <AnimeSearchBar className="w-full" defaultCategory="anime" />
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
       

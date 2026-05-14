@@ -1,6 +1,7 @@
 "use client";
 
 import { CarouselWrapper } from "~/components/anime/carousel-wrapper";
+import { RecommendationCTA } from "~/components/recommendations/recommendation-cta";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState, Suspense } from "react";
 import "~/components/anime/styles.css";
@@ -35,8 +36,13 @@ export default function HomePage() {
       <Suspense fallback={null}>
         <MessageHandler />
       </Suspense>
-      <section className="pt-28 pb-16 overflow-visible">
+      <section className="pt-28 pb-8 overflow-visible">
         <CarouselWrapper />
+      </section>
+      
+      {/* AI Recommendation CTA Section */}
+      <section className="pb-16">
+        <RecommendationCTA />
       </section>
     </main>
   );

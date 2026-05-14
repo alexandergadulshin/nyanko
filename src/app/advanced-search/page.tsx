@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic';
 
 import React, { useState, useEffect, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FaStar, FaHeart, FaFilter, FaSort, FaTimes, FaPlay, FaUsers, FaTheaterMasks, FaBook } from "react-icons/fa";
+import { FaStar, FaHeart, FaFilter, FaSort, FaTimes, FaPlay, FaUsers, FaTheaterMasks, FaBook, FaChevronLeft, FaChevronRight } from "react-icons/fa";
 import { jikanAPI, type GenreItem, type SearchCategory, type SearchItem } from "~/utils/api";
 
 interface TypeOption {
@@ -159,7 +159,7 @@ interface SearchFilters {
   excludeGenres: number[];
   minScore: number;
   orderBy: string;
-  sort: 'asc' | 'desc';
+  sort: 'asc' | 'desc' | '';
 }
 
 const initialFilters: SearchFilters = {
@@ -172,18 +172,45 @@ const initialFilters: SearchFilters = {
   excludeGenres: [],
   minScore: 0,
   orderBy: "score",
-  sort: "desc",
+  sort: "",
+};
+
+// Calculate results per page based on screen size
+const getResultsPerPage = () => {
+  if (typeof window === 'undefined') return 48; // SSR fallback
+  
+  const width = window.innerWidth;
+  const height = window.innerHeight;
+  
+  // Calculate columns based on width with responsive breakpoints
+  let cols: number;
+  if (width < 640) cols = 2;        // sm: 2 cols
+  else if (width < 768) cols = 3;   // md: 3 cols  
+  else if (width < 1024) cols = 4;  // lg: 4 cols
+  else if (width < 1280) cols = 5;  // xl: 5 cols
+  else if (width < 1536) cols = 6;  // 2xl: 6 cols
+  else cols = 7;                    // 3xl+: 7 cols
+  
+  // Calculate rows based on available height (accounting for header, filters, pagination)
+  const availableHeight = height - 400; // Reserve space for UI elements
+  const itemHeight = 280; // Approximate height of each card
+  const rows = Math.max(3, Math.floor(availableHeight / itemHeight));
+  
+  return cols * rows;
 };
 
 function AdvancedSearchPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   
-  const [results, setResults] = useState<SearchItem[]>([]);
+  const [allResults, setAllResults] = useState<SearchItem[]>([]);
+  const [displayResults, setDisplayResults] = useState<SearchItem[]>([]);
   const [genres, setGenres] = useState<GenreItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [resultsPerPage, setResultsPerPage] = useState(48);
   
   const [filters, setFilters] = useState<SearchFilters>({
     ...initialFilters,
@@ -214,6 +241,19 @@ function AdvancedSearchPageContent() {
     };
 
     void loadGenres();
+    
+    // Set initial results per page and add resize listener
+    const updateResultsPerPage = () => {
+      const newResultsPerPage = getResultsPerPage();
+      setResultsPerPage(newResultsPerPage);
+    };
+    
+    updateResultsPerPage();
+    window.addEventListener('resize', updateResultsPerPage);
+    
+    return () => {
+      window.removeEventListener('resize', updateResultsPerPage);
+    };
   }, []);
 
   const performSearch = useCallback(async () => {
@@ -221,22 +261,62 @@ function AdvancedSearchPageContent() {
     setError(null);
     
     try {
-      const searchResults = filters.category === 'anime' 
-        ? await jikanAPI.advancedSearch({
-            query: filters.query,
-            type: filters.type,
-            status: filters.status,
-            rating: filters.rating,
-            genres: filters.genres,
-            excludeGenres: filters.excludeGenres,
-            minScore: filters.minScore > 0 ? filters.minScore : undefined,
-            orderBy: filters.orderBy,
-            sort: filters.sort,
-            limit: 48,
-          })
-        : await jikanAPI.searchMultiCategory(filters.query, filters.category, 48);
+      let searchResults: SearchItem[];
       
-      setResults(searchResults);
+      // If no query and no filters, show top results for the category
+      const hasQuery = filters.query.trim().length >= 2;
+      const hasFilters = filters.type || filters.status || filters.rating || 
+                        filters.genres.length > 0 || filters.excludeGenres.length > 0 ||
+                        filters.minScore > 0 || (filters.orderBy !== 'score') || filters.sort;
+      
+      console.log('Search conditions:', { hasQuery, hasFilters, category: filters.category });
+      
+      if (!hasQuery && !hasFilters) {
+        console.log('Loading top results for category:', filters.category);
+        // Show top results for each category - initially just fill one page
+        const fetchLimit = resultsPerPage; // Just fetch enough for current page size
+        switch (filters.category) {
+          case 'anime':
+            searchResults = await jikanAPI.getTopAnime(fetchLimit);
+            console.log('Top anime results:', searchResults.length);
+            break;
+          case 'manga':
+            searchResults = await jikanAPI.getTopManga(fetchLimit);
+            console.log('Top manga results:', searchResults.length);
+            break;
+          case 'characters':
+            searchResults = await jikanAPI.getTopCharacters(fetchLimit);
+            console.log('Top characters results:', searchResults.length);
+            break;
+          case 'people':
+            searchResults = await jikanAPI.getTopPeople(fetchLimit);
+            console.log('Top people results:', searchResults.length);
+            break;
+          default:
+            searchResults = await jikanAPI.getTopAnime(fetchLimit);
+        }
+      } else {
+        console.log('Performing filtered search');
+        // Perform filtered/query search
+        searchResults = filters.category === 'anime' 
+          ? await jikanAPI.advancedSearch({
+              query: filters.query,
+              type: filters.type,
+              status: filters.status,
+              rating: filters.rating,
+              genres: filters.genres,
+              excludeGenres: filters.excludeGenres,
+              minScore: filters.minScore > 0 ? filters.minScore : undefined,
+              orderBy: filters.orderBy,
+              sort: filters.sort || 'desc',
+              limit: 200,
+            })
+          : await jikanAPI.searchMultiCategory(filters.query, filters.category, 200);
+      }
+      
+      console.log('Final results:', searchResults.length);
+      setAllResults(searchResults);
+      setCurrentPage(1); // Reset to first page on new search
     } catch (err) {
       console.error("Search error:", err);
       const errorMessage = err instanceof Error && err.message.includes('rate limited')
@@ -249,15 +329,16 @@ function AdvancedSearchPageContent() {
   }, [filters]);
 
   useEffect(() => {
-    const hasValidQuery = filters.query.trim().length >= 2;
-    const hasOtherFilters = filters.type || filters.status || filters.rating || 
-                           filters.genres.length > 0 || filters.excludeGenres.length > 0 ||
-                           filters.minScore > 0;
-    
-    if (hasValidQuery || hasOtherFilters) {
-      void performSearch();
-    }
+    // Always perform search - this will handle both filtered searches and top results
+    void performSearch();
   }, [filters, performSearch]);
+
+  // Update display results when page changes or results change
+  useEffect(() => {
+    const startIndex = (currentPage - 1) * resultsPerPage;
+    const endIndex = startIndex + resultsPerPage;
+    setDisplayResults(allResults.slice(startIndex, endIndex));
+  }, [allResults, currentPage, resultsPerPage]);
 
   const handleFilterChange = (key: keyof SearchFilters, value: unknown) => {
     setFilters(prev => ({ ...prev, [key]: value as SearchFilters[typeof key] }));
@@ -290,39 +371,57 @@ function AdvancedSearchPageContent() {
 
   const categoryConfig = CATEGORY_CONFIGS[filters.category];
   const getItemTitle = (item: SearchItem) => 'title' in item ? item.title : item.name;
+  
+  // Pagination calculations
+  const hasQuery = filters.query.trim().length >= 2;
+  const hasFilters = filters.type || filters.status || filters.rating || 
+                    filters.genres.length > 0 || filters.excludeGenres.length > 0 ||
+                    filters.minScore > 0 || (filters.orderBy !== 'score') || filters.sort;
+  
+  // Only show pagination for actual search results, not top results
+  const isTopResults = !hasQuery && !hasFilters;
+  const totalPages = isTopResults ? 1 : Math.ceil(allResults.length / resultsPerPage); // Top results = 1 page only
+  
+  const hasNextPage = !isTopResults && currentPage < totalPages;
+  const hasPrevPage = !isTopResults && currentPage > 1;
+  
+  const goToPage = (page: number) => {
+    const targetPage = Math.max(1, Math.min(page, totalPages));
+    setCurrentPage(targetPage);
+  };
 
   return (
     <div className="min-h-screen bg-[#181622] light:bg-transparent">
-      <div className="container mx-auto px-4 py-8">
-        <div className="mb-8 text-center">
-          <h1 className="text-4xl font-bold mb-2">
+      <div className="container mx-auto px-3 sm:px-4 py-4 sm:py-8">
+        <div className="mb-6 sm:mb-8 text-center pt-12 sm:pt-0">
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-2">
             <span className="bg-gradient-to-r from-purple-400 via-pink-400 to-purple-600 bg-clip-text text-transparent">
               Advanced Search
             </span>
           </h1>
-          <div className="mt-4 w-[calc(100%-2rem)] max-w-6xl h-1 bg-gradient-to-r from-purple-500 to-pink-500 mx-auto rounded-full"></div>
+          <div className="mt-3 sm:mt-4 w-[calc(100%-2rem)] max-w-6xl h-1 bg-gradient-to-r from-purple-500 to-pink-500 mx-auto rounded-full"></div>
         </div>
 
-        <div className="flex flex-col lg:flex-row gap-8">
+        <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 lg:gap-8">
           <div className="lg:w-80 flex-shrink-0">
-            <div className="bg-gradient-to-br from-[#6d28d9]/40 to-[#3d2954]/60 backdrop-blur-md border border-purple-300/20 rounded-xl p-6 sticky top-4 shadow-2xl">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-semibold text-white flex items-center">
-                  <div className="w-8 h-8 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg flex items-center justify-center mr-3">
-                    <FaFilter className="text-white text-sm" />
+            <div className="bg-gradient-to-br from-[#6d28d9]/40 to-[#3d2954]/60 backdrop-blur-md border border-purple-300/20 rounded-xl p-4 sm:p-6 sticky top-20 sm:top-4 shadow-2xl">
+              <div className="flex items-center justify-between mb-4 sm:mb-6">
+                <h2 className="text-lg sm:text-xl font-semibold text-white flex items-center">
+                  <div className="w-7 h-7 sm:w-8 sm:h-8 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg flex items-center justify-center mr-2 sm:mr-3">
+                    <FaFilter className="text-white text-xs sm:text-sm" />
                   </div>
                   Filters
                 </h2>
                 <button
                   onClick={() => setShowFilters(!showFilters)}
-                  className="lg:hidden text-gray-400 hover:text-white"
+                  className="lg:hidden text-gray-400 hover:text-white p-2 rounded-lg hover:bg-white/10 transition-colors"
                 >
-                  {showFilters ? <FaTimes /> : <FaFilter />}
+                  {showFilters ? <FaTimes className="text-lg" /> : <FaFilter className="text-lg" />}
                 </button>
               </div>
 
               {showFilters && (
-                <div className="space-y-6">
+                <div className="space-y-4 sm:space-y-6">
                   <div>
                     <label className="block text-sm font-medium text-purple-200 mb-2">
                       Search Category
@@ -332,7 +431,7 @@ function AdvancedSearchPageContent() {
                         <button
                           key={cat}
                           onClick={() => handleFilterChange('category', cat)}
-                          className={`px-2 py-2 rounded-lg text-xs font-medium transition-all duration-200 flex flex-col items-center justify-center space-y-1 min-h-[60px] ${
+                          className={`px-2 py-2 sm:py-3 rounded-lg text-xs sm:text-sm font-medium transition-all duration-200 flex flex-col items-center justify-center space-y-1 min-h-[50px] sm:min-h-[60px] ${
                             filters.category === cat
                               ? 'bg-purple-600 light:bg-purple-300 text-white shadow-lg'
                               : 'bg-[#6d28d9]/30 text-gray-300 hover:text-white hover:bg-purple-500/30 border border-purple-300/40'
@@ -518,10 +617,11 @@ function AdvancedSearchPageContent() {
                       </select>
                       <select
                         value={filters.sort}
-                        onChange={(e) => handleFilterChange('sort', e.target.value as 'asc' | 'desc')}
+                        onChange={(e) => handleFilterChange('sort', e.target.value as 'asc' | 'desc' | '')}
                         className="flex-1 px-4 py-3 bg-[#6d28d9]/30 border border-purple-300/40 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400 transition-all duration-200 min-h-[48px]"
                         style={{...SELECT_STYLES, lineHeight: '1.2'}}
                       >
+                        <option value="" className="bg-[#6d28d9] text-gray-400 py-2">─────</option>
                         <option value="desc" className="bg-[#6d28d9] text-white py-2">Descending</option>
                         <option value="asc" className="bg-[#6d28d9] text-white py-2">Ascending</option>
                       </select>
@@ -551,19 +651,43 @@ function AdvancedSearchPageContent() {
               <div className="text-center py-12">
                 <p className="text-red-400 text-lg">{error}</p>
               </div>
-            ) : results.length > 0 ? (
+            ) : allResults.length > 0 ? (
               <>
                 <div className="mb-6">
                   <div className="flex items-center justify-center">
                     <div className="bg-gradient-to-r from-purple-500/20 to-pink-500/20 backdrop-blur-sm border border-purple-300/30 rounded-lg px-4 py-2">
                       <p className="text-purple-200 font-medium">
-                        Found <span className="text-purple-300 font-bold">{results.length}</span> results
+                        {(() => {
+                          const hasQuery = filters.query.trim().length >= 2;
+                          const hasFilters = filters.type || filters.status || filters.rating || 
+                                            filters.genres.length > 0 || filters.excludeGenres.length > 0 ||
+                                            filters.minScore > 0;
+                          
+                          if (!hasQuery && !hasFilters) {
+                            return (
+                              <>
+                                Top <span className="text-purple-300 font-bold">{allResults.length}</span> {categoryConfig.label}
+                              </>
+                            );
+                          } else {
+                            return (
+                              <>
+                                Found <span className="text-purple-300 font-bold">{allResults.length}</span> results
+                                {totalPages > 1 && (
+                                  <span className="text-purple-200/80 text-sm ml-2">
+                                    (Page {currentPage} of {totalPages})
+                                  </span>
+                                )}
+                              </>
+                            );
+                          }
+                        })()}
                       </p>
                     </div>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-                  {results.map((anime, index) => (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-4">
+                  {displayResults.map((anime, index) => (
                     <div
                       key={`${filters.category}-${anime.malId}-${index}`}
                       onClick={() => handleItemClick(anime)}
@@ -624,6 +748,71 @@ function AdvancedSearchPageContent() {
                     </div>
                   ))}
                 </div>
+                
+                {/* Pagination Controls */}
+                {totalPages > 1 && (
+                  <div className="flex justify-center items-center mt-6 sm:mt-8 space-x-1 sm:space-x-2 flex-wrap gap-2">
+                    <button
+                      onClick={() => goToPage(currentPage - 1)}
+                      disabled={!hasPrevPage}
+                      className={`px-3 sm:px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center space-x-1 sm:space-x-2 ${
+                        hasPrevPage
+                          ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg hover:shadow-xl'
+                          : 'bg-gray-600/50 text-gray-400 cursor-not-allowed'
+                      }`}
+                    >
+                      <FaChevronLeft className="text-xs sm:text-sm" />
+                      <span className="hidden sm:inline">Previous</span>
+                      <span className="sm:hidden">Prev</span>
+                    </button>
+                    
+                    <div className="flex items-center space-x-1">
+                      {(() => {
+                        const pages = [];
+                        const showPages = 3; // Show fewer pages on mobile
+                        let startPage = Math.max(1, currentPage - Math.floor(showPages / 2));
+                        let endPage = Math.min(totalPages, startPage + showPages - 1);
+                        
+                        // Adjust start if we're near the end
+                        if (endPage - startPage + 1 < showPages) {
+                          startPage = Math.max(1, endPage - showPages + 1);
+                        }
+                        
+                        for (let i = startPage; i <= endPage; i++) {
+                          pages.push(
+                            <button
+                              key={i}
+                              onClick={() => goToPage(i)}
+                              className={`px-2 sm:px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 min-w-[32px] sm:min-w-[36px] ${
+                                i === currentPage
+                                  ? 'bg-purple-600 text-white shadow-lg'
+                                  : 'bg-purple-500/30 text-purple-200 hover:bg-purple-500/50 hover:text-white'
+                              }`}
+                            >
+                              {i}
+                            </button>
+                          );
+                        }
+                        
+                        return pages;
+                      })()}
+                    </div>
+                    
+                    <button
+                      onClick={() => goToPage(currentPage + 1)}
+                      disabled={!hasNextPage}
+                      className={`px-3 sm:px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center space-x-1 sm:space-x-2 ${
+                        hasNextPage
+                          ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg hover:shadow-xl'
+                          : 'bg-gray-600/50 text-gray-400 cursor-not-allowed'
+                      }`}
+                    >
+                      <span className="hidden sm:inline">Next</span>
+                      <span className="sm:hidden">Next</span>
+                      <FaChevronRight className="text-xs sm:text-sm" />
+                    </button>
+                  </div>
+                )}
               </>
             ) : (
               <div className="text-center py-12">

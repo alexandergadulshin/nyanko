@@ -155,12 +155,12 @@ export function AnimeSearchBar({
   return (
     <form onSubmit={handleFormSubmit}>
     <div ref={searchRef} className={`relative w-full max-w-2xl ${className}`}>
-      <div className="relative flex">
+      <div className="relative flex h-12">
         <div className="relative">
           <button
             type="button"
             onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
-            className="h-full px-3 py-2 bg-[#6d28d9]/60 light:bg-white/80 border border-purple-300/40 light:border-gray-300 border-r-0 rounded-l-lg text-white light:text-gray-700 text-sm font-medium hover:bg-[#6d28d9]/80 light:hover:bg-gray-100 focus:outline-none focus:ring-1 focus:ring-purple-300 light:focus:ring-purple-500 transition-all duration-200 flex items-center space-x-1"
+            className="h-12 px-3 bg-[#6d28d9]/60 light:bg-white/80 border border-purple-300/40 light:border-gray-300 border-r-0 rounded-l-lg text-white light:text-gray-700 text-sm font-medium hover:bg-[#6d28d9]/80 light:hover:bg-gray-100 focus:outline-none focus:ring-1 focus:ring-purple-300 light:focus:ring-purple-500 transition-all duration-200 flex items-center space-x-1"
           >
             <span>{getCategoryLabel(category)}</span>
             <FaChevronDown className={`h-3 w-3 transition-transform duration-200 ${showCategoryDropdown ? 'rotate-180' : ''}`} />
@@ -189,7 +189,7 @@ export function AnimeSearchBar({
         </div>
 
         <div className="relative flex-1">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+          <div className="absolute inset-y-0 left-0 w-10 flex items-center justify-center pointer-events-none z-30">
             <FaSearch className="h-4 w-4 text-purple-200/70" />
           </div>
           
@@ -207,7 +207,8 @@ export function AnimeSearchBar({
             }
           }}
           placeholder={placeholder}
-          className="w-full pl-10 pr-10 py-2 bg-[#6d28d9]/40 light:bg-white/60 border border-purple-300/40 light:border-gray-300 border-l-0 rounded-r-lg text-white light:text-gray-700 placeholder-purple-200/60 light:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-purple-300 light:focus:ring-purple-500 focus:border-purple-300 light:focus:border-purple-500 focus:bg-[#6d28d9]/60 light:focus:bg-white/80 hover:border-purple-300/60 light:hover:border-gray-400 transition-all duration-200"
+          style={{paddingLeft: '40px'}}
+          className="w-full h-12 pr-10 bg-[#6d28d9]/40 light:bg-white/60 border border-purple-300/40 light:border-gray-300 border-l-0 rounded-r-lg text-white light:text-gray-700 placeholder-purple-200/60 light:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-purple-300 light:focus:ring-purple-500 focus:border-purple-300 light:focus:border-purple-500 focus:bg-[#6d28d9]/60 light:focus:bg-white/80 hover:border-purple-300/60 light:hover:border-gray-400 transition-all duration-200"
         />
         
           {query && (

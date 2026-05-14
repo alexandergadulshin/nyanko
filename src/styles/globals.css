@@ -369,3 +369,173 @@ html.light .bg-gradient-to-br.backdrop-blur-sm {
   background: rgba(255, 255, 255, 0.95) !important;
   backdrop-filter: blur(8px);
 }
+
+/* Mobile-first responsive improvements */
+@media (max-width: 640px) {
+  /* Ensure tap targets are at least 44px */
+  button, a, input, select, textarea {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  /* Improve form spacing on mobile */
+  input, select, textarea {
+    @apply px-4 py-3 text-base;
+  }
+  
+  /* Better touch interaction for cards */
+  [class*="hover:scale"], [class*="group-hover:scale"] {
+    transition: transform 0.2s ease-out, box-shadow 0.2s ease-out;
+  }
+  
+  /* Remove hover effects on mobile - use active states instead */
+  @media (hover: none) {
+    [class*="hover:"]:not([class*="hover:active"]) {
+      /* Disable hover effects on touch devices */
+    }
+  }
+  
+  /* Improve text readability on mobile */
+  .text-xs {
+    @apply text-sm;
+  }
+  
+  .text-sm {
+    @apply text-base;
+  }
+  
+  /* Better spacing for mobile cards */
+  .grid {
+    gap: 0.75rem;
+  }
+  
+  /* Ensure minimum touch target size for buttons */
+  .btn, button {
+    padding: 0.75rem 1rem;
+    font-size: 1rem;
+  }
+  
+  /* Better modal/dropdown positioning on mobile */
+  .fixed, .absolute {
+    touch-action: manipulation;
+  }
+  
+  /* Prevent zoom on focus for iOS */
+  input[type="text"],
+  input[type="search"],
+  input[type="email"],
+  input[type="password"],
+  select,
+  textarea {
+    font-size: 16px;
+  }
+  
+  /* Better scrollable areas on mobile */
+  .overflow-y-auto {
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Improve card layouts on mobile */
+  .aspect-\[3\/4\] {
+    aspect-ratio: 2/3; /* Taller cards work better on mobile */
+  }
+}
+
+/* Tablet optimizations */
+@media (min-width: 641px) and (max-width: 1024px) {
+  /* Optimize grid layouts for tablets */
+  .grid-cols-2 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  
+  .grid-cols-3 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* Large screen optimizations */
+@media (min-width: 1920px) {
+  .container {
+    max-width: 1800px;
+  }
+  
+  /* Utilize extra wide screens */
+  .grid-cols-6 {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+  }
+}
+
+/* Dark mode mobile optimizations */
+@media (max-width: 640px) {
+  /* Better contrast on mobile for dark mode */
+  .bg-gray-800\/60 {
+    @apply bg-gray-800/80;
+  }
+  
+  .backdrop-blur-sm {
+    backdrop-filter: blur(4px);
+  }
+  
+  /* Better text contrast on small screens */
+  .text-gray-400 {
+    @apply text-gray-300;
+  }
+  
+  .text-gray-500 {
+    @apply text-gray-400;
+  }
+}
+
+/* Light mode mobile optimizations */
+html.light {
+  @media (max-width: 640px) {
+    /* Better light mode contrast on mobile */
+    .bg-white\/95 {
+      @apply bg-white/98;
+    }
+    
+    .backdrop-blur-sm {
+      backdrop-filter: blur(6px);
+    }
+    
+    /* Ensure good text contrast */
+    .text-gray-600 {
+      @apply text-gray-700;
+    }
+    
+    .text-gray-500 {
+      @apply text-gray-600;
+    }
+  }
+}
+
+/* Accessibility improvements for mobile */
+@media (max-width: 640px) {
+  /* Ensure focus indicators are visible */
+  *:focus {
+    outline: 2px solid #8b5cf6;
+    outline-offset: 2px;
+  }
+  
+  /* Better focus states for interactive elements */
+  button:focus,
+  a:focus,
+  input:focus,
+  select:focus,
+  textarea:focus {
+    @apply ring-2 ring-purple-500 ring-offset-2;
+  }
+  
+  /* Improve readability with better line height */
+  p, div, span {
+    line-height: 1.6;
+  }
+  
+  /* Ensure adequate spacing between interactive elements */
+  button + button,
+  a + a,
+  button + a,
+  a + button {
+    margin-left: 0.5rem;
+  }
+}
