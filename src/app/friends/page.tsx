@@ -335,7 +335,7 @@ export default function FriendsPage() {
 function PageShell({ children }: { children: React.ReactNode }) {
   return (
     <main className="min-h-screen bg-[#0F0E16]">
-      <div className="mx-auto max-w-5xl px-4 pb-16 pt-24 sm:px-6">{children}</div>
+      <div className="mx-auto max-w-5xl px-4 pb-16 pt-6 sm:px-6">{children}</div>
     </main>
   );
 }

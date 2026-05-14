@@ -1,7 +1,7 @@
 export default function SearchLoading() {
   return (
     <main className="min-h-screen bg-[#181622]">
-      <div className="mx-auto max-w-7xl px-4 pb-20 pt-20 sm:px-6">
+      <div className="mx-auto max-w-7xl px-4 pb-20 pt-6 sm:px-6">
         <div className="h-14 w-full animate-pulse rounded-2xl bg-white/[0.04]" />
         <div className="mt-4 flex gap-2">
           {Array.from({ length: 4 }).map((_, i) => (

@@ -98,7 +98,7 @@ export function SearchView({
 
   return (
     <main className="min-h-screen bg-[#181622]">
-      <div className="mx-auto max-w-7xl px-4 pb-20 pt-20 sm:px-6">
+      <div className="mx-auto max-w-7xl px-4 pb-20 pt-6 sm:px-6">
         {/* Search bar */}
         <div className="relative">
           <FaSearch className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />

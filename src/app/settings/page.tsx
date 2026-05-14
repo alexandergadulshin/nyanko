@@ -530,7 +530,7 @@ export default function SettingsPage() {
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <main className="min-h-screen bg-[#0A0917]">
-      <div className="mx-auto max-w-5xl px-4 pb-32 pt-20 sm:px-6 sm:pt-24">
+      <div className="mx-auto max-w-5xl px-4 pb-32 pt-6 sm:px-6">
         {children}
       </div>
     </main>

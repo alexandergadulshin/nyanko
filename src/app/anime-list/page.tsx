@@ -482,7 +482,7 @@ export default function AnimeListPage() {
     <div className="min-h-screen bg-[#181622] light:bg-transparent">
       <div className="absolute inset-0 bg-gradient-to-br from-purple-900/5 via-transparent to-pink-900/5"></div>
       
-      <header className="backdrop-blur-md bg-gradient-to-r from-[#6d28d9]/80 to-[#6b4f75]/80 border-b border-purple-300/20 sticky top-0 z-50 shadow-xl">
+      <header className="backdrop-blur-md bg-gradient-to-r from-[#6d28d9]/80 to-[#6b4f75]/80 border-b border-purple-300/20 sticky top-[72px] z-40 shadow-xl">
         <div className="container mx-auto px-4 py-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-6">

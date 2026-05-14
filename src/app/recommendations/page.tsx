@@ -22,7 +22,7 @@ export default async function RecommendationsPage() {
 
   return (
     <main className="min-h-screen bg-[#0A0917]">
-      <div className="mx-auto max-w-7xl px-4 pb-24 pt-24 sm:px-6">
+      <div className="mx-auto max-w-7xl px-4 pb-24 pt-6 sm:px-6">
         <header className="mb-10 max-w-2xl">
           <p className="text-xs font-medium uppercase tracking-[0.18em] text-purple-300/80">
             Personal picks

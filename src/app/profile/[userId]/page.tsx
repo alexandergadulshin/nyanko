@@ -371,7 +371,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   // value so it visually anchors to the page.
   return (
     <main className="min-h-screen bg-[#0A0917]">
-      <div className="mx-auto max-w-5xl px-4 pb-20 pt-24 sm:px-6">{children}</div>
+      <div className="mx-auto max-w-5xl px-4 pb-20 pt-6 sm:px-6">{children}</div>
     </main>
   );
 }

@@ -13,7 +13,7 @@ export function DetailSkeleton({ variant }: DetailSkeletonProps) {
   const showRelatedGrid = variant !== "anime" && variant !== "manga";
   return (
     <div className="min-h-screen bg-[#181622] light:bg-transparent">
-      <div className="sticky top-0 z-10 bg-[#181622]/80 backdrop-blur-sm border-b border-gray-800">
+      <div className="sticky top-[72px] z-10 bg-[#181622]/80 backdrop-blur-sm border-b border-gray-800">
         <div className="container mx-auto px-4 py-4">
           <div className="h-5 w-16 rounded bg-white/[0.06] animate-pulse" />
         </div>

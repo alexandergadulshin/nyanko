@@ -48,7 +48,7 @@ export default async function PersonDetailPage({
 
   return (
     <div className="min-h-screen bg-[#181622] light:bg-transparent">
-      <div className="sticky top-0 z-10 bg-[#181622]/80 light:bg-gray-100/80 backdrop-blur-sm border-b border-gray-800 light:border-gray-300">
+      <div className="sticky top-[72px] z-10 bg-[#181622]/80 light:bg-gray-100/80 backdrop-blur-sm border-b border-gray-800 light:border-gray-300">
         <div className="container mx-auto px-4 py-4">
           <BackButton />
         </div>
