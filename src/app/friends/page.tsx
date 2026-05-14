@@ -1,607 +1,364 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+/**
+ * Friends page — rebuilt UI.
+ *
+ * Layout: horizontal segmented tabs at the top (Friends / Requests / Find),
+ * single-column content below. Skeletons during initial load, ARIA-aware
+ * toast for errors, modal confirm for destructive actions.
+ *
+ * State management: a single `useEffect` hydrates friends + requests once.
+ * Tab switching is local and never refetches; mutations refetch the
+ * relevant slice and update locally.
+ */
+
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
-import { 
-  FaUserFriends, 
-  FaSearch, 
-  FaUserPlus, 
-  FaCheck, 
-  FaTimes, 
-  FaSpinner,
-  FaTrash
-} from "react-icons/fa";
 
-const TAB_CONFIG = {
-  friends: { icon: FaUserFriends, label: 'My Friends' },
-  requests: { icon: FaUserPlus, label: 'Requests' },
-  search: { icon: FaSearch, label: 'Find Friends' }
-} as const;
+import { Tabs } from "~/components/ui/tabs";
+import { Button } from "~/components/ui/button";
+import { EmptyState } from "~/components/ui/empty-state";
+import { Skeleton } from "~/components/ui/skeleton";
+import { Toast } from "~/components/ui/toast";
+import { ConfirmDialog } from "~/components/ui/confirm-dialog";
 
-interface Friend {
-  id: string;
-  name: string;
-  username?: string;
-  image?: string;
-  bio?: string;
-  friendshipId: string;
-  friendSince: string;
-}
+import { FriendCard, type Friend } from "~/components/friends/friend-card";
+import { RequestCard } from "~/components/friends/request-card";
+import { UserSearch, type SearchUser } from "~/components/friends/user-search";
 
 interface FriendRequest {
   id: string;
-  fromUser?: {
-    id: string;
-    name: string;
-    username?: string;
-    image?: string;
-  };
-  toUser?: {
-    id: string;
-    name: string;
-    username?: string;
-    image?: string;
-  };
+  fromUser?: { id: string; name: string; username?: string; image?: string };
+  toUser?: { id: string; name: string; username?: string; image?: string };
   message?: string;
   createdAt: string;
 }
 
-interface SearchUser {
-  id: string;
-  name: string;
-  username?: string;
-  image?: string;
-  bio?: string;
-}
+type Tab = "friends" | "requests" | "search";
 
 export default function FriendsPage() {
   const { user, isLoaded } = useUser();
   const router = useRouter();
-  
-  const [activeTab, setActiveTab] = useState<'friends' | 'requests' | 'search'>('friends');
+
+  const [tab, setTab] = useState<Tab>("friends");
   const [friends, setFriends] = useState<Friend[]>([]);
-  const [incomingRequests, setIncomingRequests] = useState<FriendRequest[]>([]);
-  const [outgoingRequests, setOutgoingRequests] = useState<FriendRequest[]>([]);
+  const [incoming, setIncoming] = useState<FriendRequest[]>([]);
+  const [outgoing, setOutgoing] = useState<FriendRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<SearchUser[]>([]);
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [sendingRequest, setSendingRequest] = useState<string | null>(null);
+  const [pendingRequest, setPendingRequest] = useState<string | null>(null);
+  const [pendingUser, setPendingUser] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<{ id: string; name: string } | null>(null);
+  const [removingLoading, setRemovingLoading] = useState(false);
+
+  /* ----------------------------------------------------------- data fetch */
+
+  const refresh = useCallback(async () => {
+    try {
+      const res = await fetch("/api/friends");
+      if (!res.ok) throw new Error("Failed to load friends");
+      const data = await res.json();
+      setFriends(data.friends ?? []);
+      setIncoming(data.incomingRequests ?? []);
+      setOutgoing(data.outgoingRequests ?? []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load friends");
+    }
+  }, []);
 
   useEffect(() => {
     if (!isLoaded) return;
-    
     if (!user) {
-      router.push('/auth');
+      router.push("/auth");
       return;
     }
-
-    fetchFriendsData();
-  }, [user, isLoaded, router]);
-
-  const fetchFriendsData = async () => {
-    try {
+    let alive = true;
+    void (async () => {
       setLoading(true);
-      const response = await fetch('/api/friends');
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch friends data');
+      await refresh();
+      if (alive) setLoading(false);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [isLoaded, user, router, refresh]);
+
+  /* ------------------------------------------------------------ mutations */
+
+  const searchUsers = useCallback(async (q: string): Promise<SearchUser[]> => {
+    const res = await fetch(`/api/users/search?q=${encodeURIComponent(q)}&limit=20`);
+    if (!res.ok) throw new Error("Search failed");
+    const data = await res.json();
+    return (data.users ?? []) as SearchUser[];
+  }, []);
+
+  const sendRequest = useCallback(
+    async (toUserId: string) => {
+      setPendingUser(toUserId);
+      try {
+        const res = await fetch("/api/friends/requests", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ toUserId }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error ?? "Couldn't send request");
+        }
+        await refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Couldn't send request");
+      } finally {
+        setPendingUser(null);
       }
-      
-      const data = await response.json();
-      setFriends(data.friends || []);
-      setIncomingRequests(data.incomingRequests || []);
-      setOutgoingRequests(data.outgoingRequests || []);
-    } catch (err) {
-      console.error('Error fetching friends:', err);
-      setError('Failed to load friends data');
+    },
+    [refresh],
+  );
+
+  const respond = useCallback(
+    async (requestId: string, action: "accept" | "decline") => {
+      setPendingRequest(requestId);
+      // Optimistic: remove from incoming immediately; refresh confirms.
+      const prev = incoming;
+      setIncoming((rs) => rs.filter((r) => r.id !== requestId));
+      try {
+        const res = await fetch("/api/friends/requests", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ requestId, action }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error ?? `Couldn't ${action} request`);
+        }
+        await refresh();
+      } catch (e) {
+        // Restore on failure.
+        setIncoming(prev);
+        setError(e instanceof Error ? e.message : `Couldn't ${action} request`);
+      } finally {
+        setPendingRequest(null);
+      }
+    },
+    [incoming, refresh],
+  );
+
+  const cancelRequest = useCallback(
+    async (requestId: string) => {
+      setPendingRequest(requestId);
+      const prev = outgoing;
+      setOutgoing((rs) => rs.filter((r) => r.id !== requestId));
+      try {
+        const res = await fetch(`/api/friends/requests?requestId=${encodeURIComponent(requestId)}`, {
+          method: "DELETE",
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error ?? "Couldn't cancel request");
+        }
+        await refresh();
+      } catch (e) {
+        setOutgoing(prev);
+        setError(e instanceof Error ? e.message : "Couldn't cancel request");
+      } finally {
+        setPendingRequest(null);
+      }
+    },
+    [outgoing, refresh],
+  );
+
+  const performRemove = useCallback(async () => {
+    if (!removing) return;
+    setRemovingLoading(true);
+    const prev = friends;
+    setFriends((fs) => fs.filter((f) => f.friendshipId !== removing.id));
+    try {
+      const res = await fetch(`/api/friends/${removing.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "Couldn't remove friend");
+      }
+      await refresh();
+      setRemoving(null);
+    } catch (e) {
+      setFriends(prev);
+      setError(e instanceof Error ? e.message : "Couldn't remove friend");
     } finally {
-      setLoading(false);
+      setRemovingLoading(false);
     }
-  };
+  }, [friends, refresh, removing]);
 
-  const searchUsers = async () => {
-    if (!searchQuery.trim() || searchQuery.trim().length < 2) {
-      setSearchResults([]);
-      return;
-    }
+  /* -------------------------------------------------------------- render */
 
-    setSearchLoading(true);
-    try {
-      const response = await fetch(`/api/users/search?q=${encodeURIComponent(searchQuery.trim())}&limit=20`);
-      
-      if (!response.ok) {
-        throw new Error('Failed to search users');
-      }
-      
-      const data = await response.json();
-      setSearchResults(data.users || []);
-    } catch (err) {
-      console.error('Error searching users:', err);
-      setError('Failed to search users');
-    } finally {
-      setSearchLoading(false);
-    }
-  };
+  const tabItems = useMemo(
+    () =>
+      [
+        { value: "friends" as const, label: "Friends", count: friends.length },
+        { value: "requests" as const, label: "Requests", count: incoming.length, badge: incoming.length > 0 ? ("danger" as const) : undefined },
+        { value: "search" as const, label: "Find people" },
+      ] as const,
+    [friends.length, incoming.length],
+  );
 
-  const sendFriendRequest = async (toUserId: string, message?: string) => {
-    setSendingRequest(toUserId);
-    try {
-      const response = await fetch('/api/friends/requests', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          toUserId,
-          message: message?.trim() || null,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to send friend request');
-      }
-
-      setError(null);
-      await fetchFriendsData();
-      
-      setSearchResults(prev => prev.filter(u => u.id !== toUserId));
-    } catch (err) {
-      console.error('Error sending friend request:', err);
-      setError(err instanceof Error ? err.message : 'Failed to send friend request');
-    } finally {
-      setSendingRequest(null);
-    }
-  };
-
-  const respondToFriendRequest = async (requestId: string, action: 'accept' | 'decline') => {
-    try {
-      const response = await fetch('/api/friends/requests', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          requestId,
-          action,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || `Failed to ${action} friend request`);
-      }
-
-      setError(null);
-      await fetchFriendsData();
-    } catch (err) {
-      console.error(`Error ${action}ing friend request:`, err);
-      setError(err instanceof Error ? err.message : `Failed to ${action} friend request`);
-    }
-  };
-
-  const cancelFriendRequest = async (requestId: string) => {
-    try {
-      const response = await fetch(`/api/friends/requests?requestId=${requestId}`, {
-        method: 'DELETE',
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to cancel friend request');
-      }
-
-      setError(null);
-      await fetchFriendsData();
-    } catch (err) {
-      console.error('Error cancelling friend request:', err);
-      setError(err instanceof Error ? err.message : 'Failed to cancel friend request');
-    }
-  };
-
-  const removeFriend = async (friendshipId: string) => {
-    if (!confirm('Are you sure you want to remove this friend?')) return;
-
-    try {
-      const response = await fetch(`/api/friends/${friendshipId}`, {
-        method: 'DELETE',
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to remove friend');
-      }
-
-      setError(null);
-      await fetchFriendsData();
-    } catch (err) {
-      console.error('Error removing friend:', err);
-      setError(err instanceof Error ? err.message : 'Failed to remove friend');
-    }
-  };
-
-  if (!isLoaded || loading) {
-    return (
-      <div className="min-h-screen bg-[#181622] light:bg-transparent flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto mb-4"></div>
-          <p className="text-white text-lg">Loading...</p>
-        </div>
-      </div>
-    );
+  if (!isLoaded) {
+    return <PageShell><FriendsSkeleton /></PageShell>;
   }
-
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-[#181622] light:bg-transparent flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-red-400 text-lg mb-4">Please sign in to view friends</p>
-          <button
-            onClick={() => router.push("/auth")}
-            className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg transition-colors"
-          >
-            Sign In
-          </button>
-        </div>
-      </div>
-    );
-  }
+  if (!user) return null;
 
   return (
-    <div className="min-h-screen bg-[#181622] light:bg-transparent">
-      <div className="container mx-auto px-4 py-8">
-        <div className="mb-8 text-center">
-          <h1 className="text-4xl font-bold mb-2">
-            <span className="bg-gradient-to-r from-purple-400 via-pink-400 to-purple-600 bg-clip-text text-transparent">
-              Friends
-            </span>
-          </h1>
-          <div className="mt-4 w-[calc(100%-2rem)] max-w-6xl h-1 bg-gradient-to-r from-purple-500 to-pink-500 mx-auto rounded-full"></div>
+    <PageShell>
+      <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-3xl font-semibold tracking-tight text-zinc-50">Friends</h1>
+          <p className="mt-1 text-sm text-zinc-400">
+            Connect with other watchers. See their lists, recommend each other shows.
+          </p>
         </div>
+        <Tabs value={tab} onChange={setTab} items={tabItems} ariaLabel="Friends tabs" />
+      </header>
 
-        <div className="flex flex-col lg:flex-row gap-8">
-          <div className="lg:w-64 flex-shrink-0">
-            <div className="bg-gradient-to-br from-[#6d28d9]/40 to-[#3d2954]/60 backdrop-blur-md border border-purple-300/20 rounded-xl p-4 sticky top-4">
-              <nav className="space-y-2">
-                {Object.entries(TAB_CONFIG).map(([tabKey, config]) => {
-                  const IconComponent = config.icon;
-                  const isActive = activeTab === tabKey;
-                  const showBadge = tabKey === 'friends' ? friends.length : 
-                                  tabKey === 'requests' ? incomingRequests.length : 0;
-                  
-                  return (
-                    <button
-                      key={tabKey}
-                      onClick={() => setActiveTab(tabKey as keyof typeof TAB_CONFIG)}
-                      className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 text-left ${
-                        isActive
-                          ? 'bg-purple-600 text-white shadow-lg'
-                          : 'text-gray-300 hover:text-white hover:bg-purple-500/30'
-                      }`}
-                    >
-                      <IconComponent className="w-5 h-5" />
-                      <span className="font-medium">{config.label}</span>
-                      {showBadge > 0 && (
-                        <span className={`ml-auto text-xs px-2 py-1 rounded-full ${
-                          tabKey === 'requests' ? 'bg-red-500' : 'bg-purple-500/30'
-                        }`}>
-                          {showBadge}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </nav>
-            </div>
-          </div>
+      {loading ? (
+        <FriendsSkeleton />
+      ) : (
+        <>
+          {tab === "friends" && (
+            friends.length === 0 ? (
+              <EmptyState
+                icon={
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <circle cx="9" cy="9" r="3.5" stroke="currentColor" strokeWidth="1.5" />
+                    <path d="M3.5 19c.7-3 3-4.5 5.5-4.5s4.8 1.5 5.5 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                    <circle cx="17" cy="7" r="2.5" stroke="currentColor" strokeWidth="1.5" />
+                  </svg>
+                }
+                title="No friends yet"
+                description="Find people who share your taste in anime and connect."
+                action={<Button onClick={() => setTab("search")}>Find people</Button>}
+              />
+            ) : (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {friends.map((f) => (
+                  <FriendCard
+                    key={f.id}
+                    friend={f}
+                    onRemove={(friendshipId, name) => setRemoving({ id: friendshipId, name })}
+                  />
+                ))}
+              </div>
+            )
+          )}
 
-          <div className="flex-1">
-            <div className="bg-gradient-to-br from-[#6d28d9]/40 to-[#3d2954]/60 backdrop-blur-md border border-purple-300/20 rounded-xl p-6">
-              
-              {activeTab === 'friends' && (
-                <div className="space-y-6">
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-2xl font-bold text-white">My Friends ({friends.length})</h2>
-                  </div>
-
-                  {friends.length === 0 ? (
-                    <div className="text-center py-12">
-                      <FaUserFriends className="w-16 h-16 text-gray-500 mx-auto mb-4" />
-                      <p className="text-gray-400 text-lg mb-2">No friends yet</p>
-                      <p className="text-gray-500 text-sm mb-4">Start by searching for users to add as friends</p>
-                      <button
-                        onClick={() => setActiveTab('search')}
-                        className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg transition-colors"
-                      >
-                        Find Friends
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {friends.map((friend) => (
-                        <div 
-                          key={friend.id} 
-                          className="bg-gray-800/40 hover:bg-gray-800/60 rounded-lg p-4 border border-gray-700/30 hover:border-purple-400/30 transition-all cursor-pointer relative group"
-                          onClick={() => router.push(`/profile/${friend.id}`)}
-                          title={`View ${friend.name}'s profile`}
-                        >
-                          <div className="flex items-center space-x-3 mb-3">
-                            <div className="flex-shrink-0">
-                              {friend.image ? (
-                                <img
-                                  src={friend.image}
-                                  alt={friend.name}
-                                  className="w-12 h-12 rounded-full object-cover group-hover:ring-2 group-hover:ring-purple-400 transition-all"
-                                />
-                              ) : (
-                                <div className="w-12 h-12 rounded-full bg-gray-600 group-hover:bg-gray-500 flex items-center justify-center group-hover:ring-2 group-hover:ring-purple-400 transition-all">
-                                  <FaUserFriends className="w-6 h-6 text-gray-400" />
-                                </div>
-                              )}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <h3 className="text-white font-medium truncate">{friend.name}</h3>
-                              {friend.username && (
-                                <p className="text-gray-400 text-sm">@{friend.username}</p>
-                              )}
-                            </div>
-                          </div>
-
-                          {friend.bio && (
-                            <p className="text-gray-300 text-sm mb-3 line-clamp-2">{friend.bio}</p>
-                          )}
-
-                          <div className="flex items-center justify-between">
-                            <span className="text-gray-500 text-xs">
-                              Friends since {new Date(friend.friendSince).toLocaleDateString()}
-                            </span>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                removeFriend(friend.friendshipId);
-                              }}
-                              className="text-gray-400 hover:text-red-400 p-1 transition-colors z-10 relative"
-                              title="Remove Friend"
-                            >
-                              <FaTrash className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {activeTab === 'requests' && (
-                <div className="space-y-6">
-                  <h2 className="text-2xl font-bold text-white mb-6">Friend Requests</h2>
-
-                  <div>
-                    <h3 className="text-lg font-semibold text-white mb-4">
-                      Incoming Requests ({incomingRequests.length})
-                    </h3>
-                    
-                    {incomingRequests.length === 0 ? (
-                      <div className="text-center py-8 bg-gray-800/20 rounded-lg">
-                        <p className="text-gray-400">No incoming friend requests</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {incomingRequests.map((request) => (
-                          <div key={request.id} className="flex items-center justify-between p-4 bg-gray-800/40 rounded-lg border border-gray-700/30">
-                            <div className="flex items-center space-x-3">
-                              {request.fromUser?.image ? (
-                                <img
-                                  src={request.fromUser.image}
-                                  alt={request.fromUser.name}
-                                  className="w-10 h-10 rounded-full object-cover"
-                                />
-                              ) : (
-                                <div className="w-10 h-10 rounded-full bg-gray-600 flex items-center justify-center">
-                                  <FaUserFriends className="w-5 h-5 text-gray-400" />
-                                </div>
-                              )}
-                              <div>
-                                <p className="text-white font-medium">{request.fromUser?.name}</p>
-                                {request.fromUser?.username && (
-                                  <p className="text-gray-400 text-sm">@{request.fromUser.username}</p>
-                                )}
-                                {request.message && (
-                                  <p className="text-gray-300 text-sm mt-1">"{request.message}"</p>
-                                )}
-                                <p className="text-gray-500 text-xs mt-1">
-                                  {new Date(request.createdAt).toLocaleDateString()}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex space-x-2">
-                              <button
-                                onClick={() => respondToFriendRequest(request.id, 'accept')}
-                                className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm transition-colors flex items-center space-x-1"
-                              >
-                                <FaCheck className="w-3 h-3" />
-                                <span>Accept</span>
-                              </button>
-                              <button
-                                onClick={() => respondToFriendRequest(request.id, 'decline')}
-                                className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm transition-colors flex items-center space-x-1"
-                              >
-                                <FaTimes className="w-3 h-3" />
-                                <span>Decline</span>
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+          {tab === "requests" && (
+            <div className="space-y-8">
+              <section>
+                <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-zinc-400">
+                  Incoming ({incoming.length})
+                </h2>
+                {incoming.length === 0 ? (
+                  <EmptyState title="No incoming requests" description="When someone wants to connect, you'll see it here." />
+                ) : (
+                  <div className="space-y-2">
+                    {incoming.map((r) =>
+                      r.fromUser ? (
+                        <RequestCard
+                          key={r.id}
+                          id={r.id}
+                          direction="incoming"
+                          user={r.fromUser}
+                          message={r.message}
+                          createdAt={r.createdAt}
+                          onAccept={(id) => respond(id, "accept")}
+                          onDecline={(id) => respond(id, "decline")}
+                          pendingId={pendingRequest}
+                        />
+                      ) : null,
                     )}
                   </div>
+                )}
+              </section>
 
-                  <div>
-                    <h3 className="text-lg font-semibold text-white mb-4">
-                      Sent Requests ({outgoingRequests.length})
-                    </h3>
-                    
-                    {outgoingRequests.length === 0 ? (
-                      <div className="text-center py-8 bg-gray-800/20 rounded-lg">
-                        <p className="text-gray-400">No outgoing friend requests</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {outgoingRequests.map((request) => (
-                          <div key={request.id} className="flex items-center justify-between p-4 bg-gray-800/40 rounded-lg border border-gray-700/30">
-                            <div className="flex items-center space-x-3">
-                              {request.toUser?.image ? (
-                                <img
-                                  src={request.toUser.image}
-                                  alt={request.toUser.name}
-                                  className="w-10 h-10 rounded-full object-cover"
-                                />
-                              ) : (
-                                <div className="w-10 h-10 rounded-full bg-gray-600 flex items-center justify-center">
-                                  <FaUserFriends className="w-5 h-5 text-gray-400" />
-                                </div>
-                              )}
-                              <div>
-                                <p className="text-white font-medium">{request.toUser?.name}</p>
-                                {request.toUser?.username && (
-                                  <p className="text-gray-400 text-sm">@{request.toUser.username}</p>
-                                )}
-                                {request.message && (
-                                  <p className="text-gray-300 text-sm mt-1">"{request.message}"</p>
-                                )}
-                                <p className="text-gray-500 text-xs mt-1">
-                                  Sent {new Date(request.createdAt).toLocaleDateString()}
-                                </p>
-                              </div>
-                            </div>
-                            <button
-                              onClick={() => cancelFriendRequest(request.id)}
-                              className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded text-sm transition-colors flex items-center space-x-1"
-                            >
-                              <FaTimes className="w-3 h-3" />
-                              <span>Cancel</span>
-                            </button>
-                          </div>
-                        ))}
-                      </div>
+              <section>
+                <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-zinc-400">
+                  Sent ({outgoing.length})
+                </h2>
+                {outgoing.length === 0 ? (
+                  <EmptyState title="No outgoing requests" description="You haven't sent any pending requests." />
+                ) : (
+                  <div className="space-y-2">
+                    {outgoing.map((r) =>
+                      r.toUser ? (
+                        <RequestCard
+                          key={r.id}
+                          id={r.id}
+                          direction="outgoing"
+                          user={r.toUser}
+                          message={r.message}
+                          createdAt={r.createdAt}
+                          onCancel={cancelRequest}
+                          pendingId={pendingRequest}
+                        />
+                      ) : null,
                     )}
                   </div>
-                </div>
-              )}
-
-              {activeTab === 'search' && (
-                <div className="space-y-6">
-                  <h2 className="text-2xl font-bold text-white mb-6">Find Friends</h2>
-
-                  <div className="flex space-x-2">
-                    <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Search by name or username..."
-                      className="flex-1 px-4 py-3 bg-[#6d28d9]/30 border border-purple-300/40 rounded-lg text-white placeholder-purple-200/60 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400"
-                      onKeyPress={(e) => e.key === 'Enter' && searchUsers()}
-                    />
-                    <button
-                      onClick={searchUsers}
-                      disabled={searchLoading || !searchQuery.trim() || searchQuery.trim().length < 2}
-                      className="bg-purple-600 hover:bg-purple-700 disabled:bg-purple-800 disabled:opacity-50 text-white px-6 py-3 rounded-lg transition-colors flex items-center space-x-2"
-                    >
-                      {searchLoading ? (
-                        <FaSpinner className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <FaSearch className="w-4 h-4" />
-                      )}
-                      <span>Search</span>
-                    </button>
-                  </div>
-
-                  {searchResults.length > 0 && (
-                    <div className="space-y-3">
-                      <h3 className="text-lg font-semibold text-white">Search Results</h3>
-                      {searchResults.map((searchUser) => (
-                        <div 
-                          key={searchUser.id} 
-                          className="flex items-center justify-between p-4 bg-gray-800/40 hover:bg-gray-800/60 rounded-lg border border-gray-700/30 hover:border-purple-400/30 transition-all cursor-pointer relative group"
-                          onClick={() => router.push(`/profile/${searchUser.id}`)}
-                          title={`View ${searchUser.name}'s profile`}
-                        >
-                          <div className="flex items-center space-x-3">
-                            <div className="flex-shrink-0">
-                              {searchUser.image ? (
-                                <img
-                                  src={searchUser.image}
-                                  alt={searchUser.name}
-                                  className="w-10 h-10 rounded-full object-cover group-hover:ring-2 group-hover:ring-purple-400 transition-all"
-                                />
-                              ) : (
-                                <div className="w-10 h-10 rounded-full bg-gray-600 group-hover:bg-gray-500 flex items-center justify-center group-hover:ring-2 group-hover:ring-purple-400 transition-all">
-                                  <FaUserFriends className="w-5 h-5 text-gray-400" />
-                                </div>
-                              )}
-                            </div>
-                            <div>
-                              <p className="text-white font-medium">{searchUser.name}</p>
-                              {searchUser.username && (
-                                <p className="text-gray-400 text-sm">@{searchUser.username}</p>
-                              )}
-                              {searchUser.bio && (
-                                <p className="text-gray-300 text-sm mt-1 line-clamp-1">{searchUser.bio}</p>
-                              )}
-                            </div>
-                          </div>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              sendFriendRequest(searchUser.id);
-                            }}
-                            disabled={sendingRequest === searchUser.id}
-                            className="bg-purple-600 hover:bg-purple-700 disabled:bg-purple-800 disabled:opacity-50 text-white px-3 py-1 rounded text-sm transition-colors flex items-center space-x-1 z-10 relative"
-                          >
-                            {sendingRequest === searchUser.id ? (
-                              <FaSpinner className="w-3 h-3 animate-spin" />
-                            ) : (
-                              <FaUserPlus className="w-3 h-3" />
-                            )}
-                            <span>Add Friend</span>
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {searchResults.length === 0 && searchQuery.trim() && !searchLoading && (
-                    <div className="text-center py-8 bg-gray-800/20 rounded-lg">
-                      <p className="text-gray-400">No users found matching your search</p>
-                    </div>
-                  )}
-                </div>
-              )}
+                )}
+              </section>
             </div>
-          </div>
-        </div>
-      </div>
+          )}
 
-      {error && (
-        <div className="fixed top-4 right-4 bg-red-600 text-white px-4 py-2 rounded-lg z-50 max-w-sm">
-          {error}
-          <button
-            onClick={() => setError(null)}
-            className="ml-2 text-red-200 hover:text-white float-right"
-          >
-            <FaTimes className="w-4 h-4" />
-          </button>
-        </div>
+          {tab === "search" && (
+            <UserSearch
+              fetcher={searchUsers}
+              onAddFriend={sendRequest}
+              pendingUserId={pendingUser}
+            />
+          )}
+        </>
       )}
+
+      <Toast message={error} kind="error" onDismiss={() => setError(null)} />
+
+      <ConfirmDialog
+        open={!!removing}
+        onCancel={() => setRemoving(null)}
+        onConfirm={performRemove}
+        title={removing ? `Remove ${removing.name}?` : "Remove friend?"}
+        description="They'll need to send a new request to reconnect."
+        confirmLabel="Remove"
+        destructive
+        loading={removingLoading}
+      />
+    </PageShell>
+  );
+}
+
+function PageShell({ children }: { children: React.ReactNode }) {
+  return (
+    <main className="min-h-screen bg-[#0F0E16]">
+      <div className="mx-auto max-w-5xl px-4 pb-16 pt-24 sm:px-6">{children}</div>
+    </main>
+  );
+}
+
+function FriendsSkeleton() {
+  return (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} className="rounded-xl bg-white/[0.03] ring-1 ring-white/[0.06] p-4">
+          <div className="flex items-start gap-3">
+            <Skeleton rounded="full" className="h-14 w-14" />
+            <div className="flex-1 space-y-2 pt-1">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-3 w-20" />
+              <Skeleton className="h-3 w-full" />
+            </div>
+          </div>
+          <div className="mt-4 flex items-center justify-between border-t border-white/[0.06] pt-3">
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="h-7 w-16" />
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
