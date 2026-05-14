@@ -1,5 +1,7 @@
 "use client";
 
+import type { IconType } from "react-icons";
+import { FaGlobe, FaUserFriends, FaLock } from "react-icons/fa";
 import { ToggleRow } from "./settings-toggle-row";
 
 export type ProfileVisibility = "public" | "friends" | "private";
@@ -24,11 +26,11 @@ const VIS: ReadonlyArray<{
   value: ProfileVisibility;
   label: string;
   description: string;
-  glyph: string;
+  Icon: IconType;
 }> = [
-  { value: "public",  label: "Public",  description: "Anyone can view your profile.", glyph: "🌐" },
-  { value: "friends", label: "Friends", description: "Only friends can view it.",     glyph: "👥" },
-  { value: "private", label: "Private", description: "Only you can view it.",         glyph: "🔒" },
+  { value: "public",  label: "Public",  description: "Anyone can view your profile.", Icon: FaGlobe },
+  { value: "friends", label: "Friends", description: "Only friends can view it.",     Icon: FaUserFriends },
+  { value: "private", label: "Private", description: "Only you can view it.",         Icon: FaLock },
 ];
 
 export function PrivacySection({ values, onChange }: Props) {
@@ -37,6 +39,7 @@ export function PrivacySection({ values, onChange }: Props) {
       <div role="radiogroup" aria-label="Profile visibility" className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         {VIS.map((o) => {
           const active = values.profileVisibility === o.value;
+          const Icon = o.Icon;
           return (
             <button
               key={o.value}
@@ -52,7 +55,10 @@ export function PrivacySection({ values, onChange }: Props) {
               }
             >
               <div className="flex items-start justify-between">
-                <span className="text-2xl" aria-hidden="true">{o.glyph}</span>
+                <Icon
+                  className={"h-5 w-5 " + (active ? "text-purple-200" : "text-zinc-400")}
+                  aria-hidden="true"
+                />
                 <Check active={active} />
               </div>
               <p className={"mt-4 text-base font-semibold " + (active ? "text-white" : "text-zinc-100")}>
