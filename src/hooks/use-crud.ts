@@ -379,9 +379,6 @@ export function useAnimeList(userId?: string) {
   return useCrud<AnimeListItem>({
     endpoint: '/api/anime-list',
     optimisticUpdates: true,
-    onSuccess: (action, item) => {
-      console.log(`Anime list ${action}:`, item);
-    },
     onError: (action, error) => {
       console.error(`Anime list ${action} error:`, error);
     }
@@ -400,9 +397,6 @@ export function useFavorites() {
   return useCrud<FavoriteItem>({
     endpoint: '/api/favorites',
     optimisticUpdates: true,
-    onSuccess: (action, item) => {
-      console.log(`Favorites ${action}:`, item);
-    },
     onError: (action, error) => {
       console.error(`Favorites ${action} error:`, error);
     }
